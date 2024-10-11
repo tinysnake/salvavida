@@ -1,0 +1,201 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{71C435AD-F86D-4699-8099-8409B5990725}|..\\Salvavida.Attributes\\Salvavida.csproj|d:\\proj\\virtual-file-system\\salvavida.attributes\\attributes\\savableattribute.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|d:\\proj\\virtual-file-system\\salvavida.generator\\classinfo.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|solutionrelative:classinfo.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|d:\\proj\\virtual-file-system\\salvavida.generator\\basiccodegenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|solutionrelative:basiccodegenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|d:\\proj\\virtual-file-system\\salvavida.generator\\icodegenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|solutionrelative:icodegenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|d:\\proj\\virtual-file-system\\salvavida.generator\\scriptbuilder.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|solutionrelative:scriptbuilder.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{71C435AD-F86D-4699-8099-8409B5990725}|..\\Salvavida.Attributes\\Salvavida.csproj|d:\\proj\\virtual-file-system\\salvavida.attributes\\salvavida.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{71C435AD-F86D-4699-8099-8409B5990725}|..\\Salvavida.Attributes\\Salvavida.csproj|d:\\proj\\virtual-file-system\\salvavida.attributes\\salvavida.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|d:\\proj\\virtual-file-system\\salvavida.generator\\salvavidagenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|solutionrelative:salvavidagenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|d:\\proj\\virtual-file-system\\salvavida.generator\\unityjsoncodegenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{0BB9FAB9-4519-427A-948A-E09E1FE1F985}|Salvavida.Generator.csproj|solutionrelative:unityjsoncodegenerator.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{730BDC87-0BE0-4A0A-8DC7-C0822CEC5388}|..\\Salvavida.Generator.Debug\\Salvavida.Generator.Debug.csproj|d:\\proj\\virtual-file-system\\salvavida.generator.debug\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{730BDC87-0BE0-4A0A-8DC7-C0822CEC5388}|..\\Salvavida.Generator.Debug\\Salvavida.Generator.Debug.csproj|d:\\proj\\virtual-file-system\\salvavida.generator.debug\\testclass.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "SavableAttribute.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Attributes\\Attributes\\SavableAttribute.cs",
+              "RelativeDocumentMoniker": "..\\Salvavida.Attributes\\Attributes\\SavableAttribute.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Attributes\\Attributes\\SavableAttribute.cs",
+              "RelativeToolTip": "..\\Salvavida.Attributes\\Attributes\\SavableAttribute.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAUwAcAAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T11:08:04.15Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "ClassInfo.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\ClassInfo.cs",
+              "RelativeDocumentMoniker": "ClassInfo.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\ClassInfo.cs",
+              "RelativeToolTip": "ClassInfo.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAUwBAAAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T11:02:38.148Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "Salvavida",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Attributes\\Salvavida.csproj",
+              "RelativeDocumentMoniker": "..\\Salvavida.Attributes\\Salvavida.csproj",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Attributes\\Salvavida.csproj",
+              "RelativeToolTip": "..\\Salvavida.Attributes\\Salvavida.csproj",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2024-08-28T10:49:29.955Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "Salvavida.csproj",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Attributes\\Salvavida.csproj",
+              "RelativeDocumentMoniker": "..\\Salvavida.Attributes\\Salvavida.csproj",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Attributes\\Salvavida.csproj",
+              "RelativeToolTip": "..\\Salvavida.Attributes\\Salvavida.csproj",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAUwAYAAAAGAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2024-08-28T10:49:04.319Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "ScriptBuilder.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\ScriptBuilder.cs",
+              "RelativeDocumentMoniker": "ScriptBuilder.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\ScriptBuilder.cs",
+              "RelativeToolTip": "ScriptBuilder.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAADYAAAAIAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T09:06:13.598Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "BasicCodeGenerator.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\BasicCodeGenerator.cs",
+              "RelativeDocumentMoniker": "BasicCodeGenerator.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\BasicCodeGenerator.cs",
+              "RelativeToolTip": "BasicCodeGenerator.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAUwAkAAAAIAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T11:01:16.96Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "ICodeGenerator.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\ICodeGenerator.cs",
+              "RelativeDocumentMoniker": "ICodeGenerator.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\ICodeGenerator.cs",
+              "RelativeToolTip": "ICodeGenerator.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAUwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T08:38:03.081Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "UnityJsonCodeGenerator.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\UnityJsonCodeGenerator.cs",
+              "RelativeDocumentMoniker": "UnityJsonCodeGenerator.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\UnityJsonCodeGenerator.cs",
+              "RelativeToolTip": "UnityJsonCodeGenerator.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAkwAkAAAAvAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T08:33:47.519Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "SalvavidaGenerator.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\SalvavidaGenerator.cs",
+              "RelativeDocumentMoniker": "SalvavidaGenerator.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator\\SalvavidaGenerator.cs",
+              "RelativeToolTip": "SalvavidaGenerator.cs",
+              "ViewState": "AgIAAFgAAAAAAAAAAAAswGwAAABOAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T08:12:09.337Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 9,
+              "Title": "Program.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator.Debug\\Program.cs",
+              "RelativeDocumentMoniker": "..\\Salvavida.Generator.Debug\\Program.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator.Debug\\Program.cs",
+              "RelativeToolTip": "..\\Salvavida.Generator.Debug\\Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAuwAkAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-28T08:10:49.101Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
+              "Title": "TestClass.cs",
+              "DocumentMoniker": "D:\\proj\\virtual-file-system\\Salvavida.Generator.Debug\\TestClass.cs",
+              "RelativeDocumentMoniker": "..\\Salvavida.Generator.Debug\\TestClass.cs",
+              "ToolTip": "D:\\proj\\virtual-file-system\\Salvavida.Generator.Debug\\TestClass.cs",
+              "RelativeToolTip": "..\\Salvavida.Generator.Debug\\TestClass.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAUwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2024-08-27T11:33:00.036Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

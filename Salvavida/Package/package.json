@@ -1,0 +1,13 @@
+{
+	"name": "vip.tffis.code.salvavida",
+	"displayName": "Salvavida",
+	"version": "0.0.1",
+	"unity": "2022.3",
+	"description": "",
+	"author": {
+		"name": "Fifan Tang",
+		"email": "tff.assist@live.com"
+	},
+	"license": "MIT",
+	"dependencies": {}
+}

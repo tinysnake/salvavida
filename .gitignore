@@ -1,0 +1,7 @@
+bin/
+obj/
+/.vs
+/.vscode
+/*.meta
+
+Salvavida.Generator.Debug/salvavida.output.log
