@@ -16,7 +16,7 @@ namespace Salvavida
         private readonly string _svid;
         protected bool _isDirty = true;
 
-        public ISavable? Parent { get; protected set; }
+        public ISavable? SvParent { get; protected set; }
         bool ISavable.IsDirty => _isDirty;
 
         public abstract bool IsSavableCollection { get; }
@@ -36,9 +36,9 @@ namespace Salvavida
 
         public void TrySave(Serializer? serializer, PathBuilder pathBuilder)
         {
-            if (Parent == null || string.IsNullOrEmpty(SvId) || !_isDirty)
+            if (SvParent == null || string.IsNullOrEmpty(SvId) || !_isDirty)
                 return;
-            serializer ??= Parent.GetSerializer();
+            serializer ??= SvParent.GetSerializer();
             if (serializer == null)
                 return;
             pathBuilder.Push(SvId, SvHelper.GetPathType(this));
@@ -67,7 +67,7 @@ namespace Salvavida
 
         protected void SetParent(ISavable? parent)
         {
-            Parent = parent;
+            SvParent = parent;
         }
 
         public virtual void BeforeSerialize(Serializer serializer)
@@ -125,7 +125,7 @@ namespace Salvavida
         protected void OnCollectionChange(CollectionChangeInfo<TElem?> e)
         {
             _isDirty = true;
-            var serializer = Parent?.GetSerializer();
+            var serializer = SvParent?.GetSerializer();
             if (serializer != null)
             {
                 if (SaveSeparately)
@@ -159,7 +159,7 @@ namespace Salvavida
 
         protected virtual void TrySaveItems(Serializer serializer, PathBuilder pathBuilder, CollectionChangeInfo<TElem?> e)
         {
-            if (string.IsNullOrEmpty(SvId) || Parent == null)
+            if (string.IsNullOrEmpty(SvId) || SvParent == null)
                 return;
             switch (e.Action)
             {

@@ -30,7 +30,7 @@ namespace Salvavida
 
         public static ReadOnlySpan<char> GetParentPathAsSpan(this ISavable? savable, PathBuilder pathBuilder)
         {
-            return GetSavePathAsSpan(savable?.Parent, pathBuilder);
+            return GetSavePathAsSpan(savable?.SvParent, pathBuilder);
         }
 
         public static ReadOnlySpan<char> GetSavePathAsSpan(this ISavable? savable, PathBuilder pathBuilder)
@@ -47,7 +47,7 @@ namespace Salvavida
             {
                 TryThrowOnSvIdEmpty(savable);
                 _tempPathBuilder.Push(savable.SvId!, GetPathType(savable));
-                savable = savable.Parent;
+                savable = savable.SvParent;
             }
             while (!_tempPathBuilder.IsEmpty)
             {
@@ -72,7 +72,7 @@ namespace Salvavida
             {
                 if (savable is ISerializeRoot root)
                     return root.Serializer;
-                savable = savable.Parent;
+                savable = savable.SvParent;
             }
             if (x > 100)
                 throw new StackOverflowException();
@@ -105,7 +105,7 @@ namespace Salvavida
             }
 
             // if savable's parent is not null, then the save action will perform by it's parent, not it self.
-            var parent = savable.Parent;
+            var parent = savable.SvParent;
             if (parent != null)
                 return;
 
@@ -138,7 +138,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(sv));
             if (string.IsNullOrEmpty(sv.SvId))
             {
-                if (sv.Parent != null)
+                if (sv.SvParent != null)
                     throw new ArgumentNullException($"The child object of {sv.GetSavePathAsSpan(new PathBuilder()).ToString()} has a empty SvId");
                 else
                     throw new ArgumentException(nameof(sv.SvId));

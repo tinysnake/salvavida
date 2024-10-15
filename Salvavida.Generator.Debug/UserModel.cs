@@ -21,7 +21,7 @@ namespace Salvavida.Generator.Debug
     {
         public event PropertyChangeEventHandler<UserModel> PropertyChanged;
 
-        public ISavable Parent { get; private set; }
+        public ISavable SvParent { get; private set; }
 
         public string SvId { get; set; }
 
@@ -66,7 +66,7 @@ namespace Salvavida.Generator.Debug
 
         public void SetParent(ISavable parent)
         {
-            Parent = parent;
+            SvParent = parent;
         }
     }
 

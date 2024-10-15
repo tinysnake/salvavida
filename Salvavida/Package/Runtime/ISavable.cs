@@ -2,7 +2,7 @@ namespace Salvavida
 {
     public interface ISavable
     {
-        ISavable? Parent { get; }
+        ISavable? SvParent { get; }
 
         string? SvId { get; set; }
         bool IsDirty { get; }

@@ -385,7 +385,7 @@ namespace Salvavida.Generator
             sb.WriteLine($"public event PropertyChangeEventHandler<{_infoStore!.className}> PropertyChanged;");
             sb.WriteLine();
             AddAttributePreventSerialize(sb, true);
-            sb.WriteLine("public ISavable Parent { get; private set; }");
+            sb.WriteLine("public ISavable SvParent { get; private set; }");
             sb.WriteLine();
             AddAttributePreventSerialize(sb, false);
             sb.WriteLine("private string _svId;");
@@ -449,7 +449,7 @@ namespace Salvavida.Generator
             {
                 using (sb.CurlyBracketsScope())
                 {
-                    sb.WriteLine("Parent = parent;");
+                    sb.WriteLine("SvParent = parent;");
                 }
             }
             sb.WriteLine();
