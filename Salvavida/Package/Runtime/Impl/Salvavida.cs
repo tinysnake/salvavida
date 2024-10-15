@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 
 #if USE_UNITASK && !SV_FORCE_TASK
@@ -22,6 +22,7 @@ namespace Salvavida.DefaultImpl
         public string Id { get; }
 
         public Serializer Serializer { get; }
+        public IBackupService? BackupService { get; set; }
 
         public T CreateData<T>() where T : new() => Serializer.CreateData<T>();
 
@@ -37,6 +38,18 @@ namespace Salvavida.DefaultImpl
         public abstract void Save();
 
         public abstract Task SaveAsync(CancellationToken token);
+
+        public virtual void Backup()
+        {
+            BackupService?.Backup();
+        }
+
+        public virtual async Task BackupAsync(CancellationToken token)
+        {
+            if (BackupService == null)
+                return;
+            await BackupService.BackupAsync(Serializer.AsyncIO, token);
+        }
     }
 
     public class Salvavida<TData> : Salvavida, ISalvavida<TData> where TData : SerializeRoot, ISavable, new()

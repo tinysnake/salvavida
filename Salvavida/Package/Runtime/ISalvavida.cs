@@ -15,9 +15,11 @@ namespace Salvavida
         string Id { get; }
         Task SaveAsync(CancellationToken token);
         Task LoadAsync(CancellationToken token);
+        Task BackupAsync(CancellationToken token);
 
         void Save();
         void Load();
+        void Backup();
 
         Serializer Serializer { get; }
 
