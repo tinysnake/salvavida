@@ -29,9 +29,7 @@ namespace Salvavida
                 var oldValue = _list[index];
                 TryUnWatch(oldValue);
                 _list[index] = value;
-                if (_orderMatters && value is ISaveWithOrder swo)
-                    swo.SvOrder = index;
-                TryWatch(value);
+                OnItemSet(value, index);
                 OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldValue, value, index));
             }
         }
@@ -76,9 +74,7 @@ namespace Salvavida
             {
                 for (var i = 0; i < _list.Count; i++)
                 {
-                    if (_orderMatters && _list[i] is ISaveWithOrder swo)
-                        swo.SvOrder = i;
-                    TryWatch(_list[i]);
+                    OnItemSet(_list[i], i);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -133,6 +129,8 @@ namespace Salvavida
                 var item = _list[i];
                 if (item is ISaveWithOrder swo)
                     swo.SvOrder = i;
+                if (item is ISavable sv)
+                    sv.SvId = i.ToString();
                 list.Add(_list[i]);
             }
             CollectionUpdateOrder(serializer, pathBuilder, list);
@@ -142,9 +140,7 @@ namespace Salvavida
         {
             var index = _list.Count;
             _list.Add(item);
-            if (_orderMatters && item is ISaveWithOrder swo)
-                swo.SvOrder = index;
-            TryWatch(item);
+            OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
         }
 
@@ -155,11 +151,18 @@ namespace Salvavida
             for (var i = 0; i < collection.Count; i++)
             {
                 var item = collection[i];
-                if (item is ISaveWithOrder swo)
-                    swo.SvOrder = index + i;
-                TryWatch(item);
+                OnItemSet(item, index);
             }
             OnCollectionChange(CollectionChangeInfo<T?>.Add(collection, index));
+        }
+
+        private void OnItemSet(T? item, int index)
+        {
+            if (_orderMatters && item is ISaveWithOrder swo)
+                swo.SvOrder = index;
+            if (item is ISavable sv)
+                sv.SvId = index.ToString();
+            TryWatch(item);
         }
 
         public void Clear()
@@ -185,9 +188,7 @@ namespace Salvavida
         public void Insert(int index, T? item)
         {
             _list.Insert(index, item);
-            if (item is ISaveWithOrder swo)
-                swo.SvOrder = index;
-            TryWatch(item);
+            OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
         }
 
@@ -197,9 +198,7 @@ namespace Salvavida
             for (var i = 0; i < collection.Count; i++)
             {
                 var item = collection[i];
-                if (item is ISaveWithOrder swo)
-                    swo.SvOrder = index + i;
-                TryWatch(item);
+                OnItemSet(item, i + index);
             }
             OnCollectionChange(CollectionChangeInfo<T?>.Add(collection, index));
         }

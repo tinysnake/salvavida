@@ -27,9 +27,7 @@ namespace Salvavida
                 var oldVal = _arr[index];
                 TryUnWatch(oldVal);
                 _arr[index] = value;
-                if (value is ISaveWithOrder swo)
-                    swo.SvOrder = index;
-                TryWatch(value);
+                OnItemSet(value, index);
                 OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldVal, value, index));
             }
         }
@@ -70,13 +68,20 @@ namespace Salvavida
             {
                 for (var i = 0; i < _arr.Length; i++)
                 {
-                    if (_arr[i] is ISaveWithOrder swo)
-                        swo.SvOrder = i;
-                    TryWatch(_arr[i]);
+                    OnItemSet(_arr[i], i);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
             }
+        }
+
+        private void OnItemSet(T? item, int index)
+        {
+            if (item is ISaveWithOrder swo)
+                swo.SvOrder = index;
+            if (item is ISavable sv)
+                sv.SvId = index.ToString();
+            TryWatch(item);
         }
 
         protected override void OnChildChanged(T child, string _)

@@ -31,9 +31,7 @@ namespace Salvavida
                 var add = !_dict.TryGetValue(key, out var oldValue);
                 TryUnWatch(oldValue);
                 _dict[key] = value;
-                if (value is ISavable sv)
-                    sv.SvId = _idConverter.ConvertTo(key);
-                TryWatch(value);
+                OnItemSet(value, key);
                 if (add)
                     OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
                 else
@@ -89,9 +87,9 @@ namespace Salvavida
             _dict = dict;
             if (_dict != null)
             {
-                foreach (var (_, item) in _dict)
+                foreach (var (key, item) in _dict)
                 {
-                    TryWatch(item);
+                    OnItemSet(item, key);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -175,15 +173,18 @@ namespace Salvavida
         public void Add(TKey key, TValue? value)
         {
             _dict.Add(key, value);
-            if (value is ISavable sv)
-            {
-                sv.SvId = _idConverter.ConvertTo(key);
-            }
-            TryWatch(value);
+            OnItemSet(value, key);
             OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
         }
 
         public void Add(KeyValuePair<TKey, TValue?> item) => Add(item.Key, item.Value);
+
+        private void OnItemSet(TValue? item, TKey key)
+        {
+            if (item is ISavable sv)
+                sv.SvId = _idConverter.ConvertTo(key);
+            TryWatch(item);
+        }
 
         public void Clear()
         {
