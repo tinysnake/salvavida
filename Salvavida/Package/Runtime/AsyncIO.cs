@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 
 namespace Salvavida
@@ -7,7 +8,7 @@ namespace Salvavida
     /// 1. Find a appropriate oppertunity to execute "RunJobs" method, usually in other thread.
     /// 2. Execute "CompletedFinishedJobs" right after "RunJobs" finishs, prefer in main thread.
     /// </summary>
-    public abstract partial class AsyncIO
+    public abstract partial class AsyncIO : IDisposable
     {
         protected readonly ConcurrentDictionary<int, AsyncJob> _jobs = new();
         protected readonly ConcurrentBag<AsyncJob> _finishedJobs = new();
@@ -58,5 +59,9 @@ namespace Salvavida
         }
 
         public abstract void ForceComplete();
+
+        public virtual void Dispose()
+        {
+        }
     }
 }
