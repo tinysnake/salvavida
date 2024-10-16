@@ -38,10 +38,23 @@ namespace Salvavida
 
         private readonly PathBuilder _pathBuilder = new();
         private int _pathBuilderLocker = 0;
+        protected IIdGenerator? _idGen;
 
         public IObjectPool<PathBuilder> PathBuilderPool { get; set; } = new DefaultObjectPool<PathBuilder>(() => new PathBuilder(), path => path.Clear(), 10);
         public SavePolicy SavePolicy { get; set; } = SavePolicy.Sync;
-        public IIdGenerator IdGenerator { get; set; } = new DefaultIdGenerator();
+        public virtual IIdGenerator IdGenerator
+        {
+            get
+            {
+                _idGen ??= DefaultIdGenerator.Default;
+                return _idGen;
+            }
+            set
+            {
+                _idGen = value;
+            }
+        }
+
         public abstract AsyncIO AsyncIO { get; }
 
         public virtual T CreateData<T>() where T : new()
