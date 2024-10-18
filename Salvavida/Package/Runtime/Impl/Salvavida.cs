@@ -66,11 +66,17 @@ namespace Salvavida.DefaultImpl
             if (Serializer == null)
                 throw new NullReferenceException(nameof(Serializer));
             var data = Serializer.FreshReadSync<TData>(Id);
-            if (data != null)
+            var needsSave = false;
+            if (data == null)
             {
-                data.SetSerializer(Serializer);
-                Data = data;
+                data = Serializer.CreateData<TData>();
+                data.SvId = Id;
+                needsSave = true;
             }
+            data.SetSerializer(Serializer);
+            Data = data;
+            if (needsSave)
+                Save();
         }
 
         public override async Task LoadAsync(CancellationToken token)
@@ -78,11 +84,17 @@ namespace Salvavida.DefaultImpl
             if (Serializer == null)
                 throw new NullReferenceException(nameof(Serializer));
             var data = await Serializer.FreshReadAsync<TData>(Id.AsMemory(), token);
-            if (data != null)
+            var needsSave = false;
+            if (data == null)
             {
-                data.SetSerializer(Serializer);
-                Data = data;
+                data = Serializer.CreateData<TData>();
+                data.SvId = Id;
+                needsSave = true;
             }
+            data.SetSerializer(Serializer);
+            Data = data;
+            if (needsSave)
+                await SaveAsync(token);
         }
 
         public override void Save()
