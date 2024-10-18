@@ -71,6 +71,8 @@ namespace Salvavida.DefaultImpl
                 data.SetSerializer(Serializer);
                 Data = data;
             }
+            else
+                Data = CreateData<TData>();
         }
 
         public override async Task LoadAsync(CancellationToken token)
@@ -83,6 +85,8 @@ namespace Salvavida.DefaultImpl
                 data.SetSerializer(Serializer);
                 Data = data;
             }
+            else
+                Data = CreateData<TData>();
         }
 
         public override void Save()
