@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Salvavida
 {
@@ -6,8 +7,7 @@ namespace Salvavida
     {
         internal static Type typeOfSavableInterface = typeof(ISavable);
         internal static Type typeOfSaveOrderInterface = typeof(ISaveWithOrder);
-
-        private static PathBuilder _tempPathBuilder = new();
+        private static Stack<(string, PathBuilder.Type)> _tempPathBuilder = new();
 
         public static bool CheckIsSavable<T>()
         {
@@ -39,29 +39,28 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(pathBuilder));
             if (!pathBuilder.IsEmpty)
                 throw new ArgumentNullException(nameof(pathBuilder) + " is not empty");
-            if (_tempPathBuilder.MaxLength < pathBuilder.MaxLength)
-                _tempPathBuilder = new PathBuilder(pathBuilder.MaxLength);
-            else
-                _tempPathBuilder.Clear();
+            _tempPathBuilder.Clear();
             while (savable != null)
             {
                 TryThrowOnSvIdEmpty(savable);
-                _tempPathBuilder.Push(savable.SvId!, GetPathType(savable));
+                _tempPathBuilder.Push((savable.SvId!, GetPathType(savable)));
                 savable = savable.SvParent;
             }
-            while (!_tempPathBuilder.IsEmpty)
+            var lastPathType = PathBuilder.Type.Property;
+            while (_tempPathBuilder.Count > 0)
             {
-                var span = _tempPathBuilder.PopAsSpan(out var t);
-                pathBuilder.Push(span, t);
+                var item = _tempPathBuilder.Pop();
+                pathBuilder.Push(item.Item1, lastPathType);
+                lastPathType = item.Item2;
             }
 
             return pathBuilder.AsSpan();
         }
 
-        public static PathBuilder.Type GetPathType<T>(T sv) where T : ISavable
+        private static PathBuilder.Type GetPathType<T>(T sv) where T : ISavable
         {
-            //if (sv is ObservableCollection col && col.IsSavableCollection)
-            //    return PathBuilder.Type.Collection;
+            if (sv is ObservableCollection)
+                return PathBuilder.Type.Collection;
             return PathBuilder.Type.Property;
         }
 

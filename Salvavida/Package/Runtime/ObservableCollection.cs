@@ -41,7 +41,7 @@ namespace Salvavida
             serializer ??= SvParent.GetSerializer();
             if (serializer == null)
                 return;
-            pathBuilder.Push(SvId, SvHelper.GetPathType(this));
+            pathBuilder.Push(SvId, PathBuilder.Type.Property);
             if (SaveSeparately)
                 TrySaveSeparatelyByEvent(serializer, pathBuilder);
             pathBuilder.Pop();
