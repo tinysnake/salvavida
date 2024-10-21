@@ -128,7 +128,7 @@ namespace Salvavida
                     break;
                 case CollectionChangedAction.Remove:
                     if (e.IsSingleItem)
-                        KeyCollectionSave(serializer, pathBuilder, e.OldItems!, isRemove: true);
+                        KeyCollectionSave(serializer, pathBuilder, e.OldItem!, isRemove: true);
                     else
                         KeyCollectionSave(serializer, pathBuilder, e.OldItems!, isRemove: true);
                     break;
