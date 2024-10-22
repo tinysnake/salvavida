@@ -22,8 +22,8 @@ namespace Salvavida.Generator.Debug
         public string Prop2 { get; private set; }
     }
 
-    //[Savable(SerializeWithOrder = true)]
-    //[Serializable]
+    [Savable(SerializeWithOrder = true)]
+    [Serializable]
     public partial class Person
     {
         [SerializeField]
@@ -55,6 +55,8 @@ namespace Salvavida.Generator.Debug
         [SaveSeparately]
         [NonSerialized]
         public List<InventoryItemData> inventory;
+        [SerializeField]
+        private InventoryItemData handInventory;
 
     }
     [Savable]

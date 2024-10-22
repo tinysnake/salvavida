@@ -12,6 +12,7 @@ namespace Salvavida.Generator
         public readonly List<(string, string)> nameMappings = new();
         public readonly Dictionary<string, ITypeSymbol> propTypeMappings = new();
         public readonly Dictionary<string, (CollectionType, ISymbol[])> collectionParameterMappings = new();
+        public readonly Dictionary<ITypeSymbol, bool> savableTypes = new();
         public bool isOrderedClass;
     }
 }

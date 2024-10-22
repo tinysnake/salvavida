@@ -303,24 +303,68 @@ namespace Salvavida.Generator
 
         }
 
+        protected bool IsTypeISavable(ITypeSymbol typeSymbol)
+        {
+            if (!_infoStore!.savableTypes.TryGetValue(typeSymbol, out var result))
+            {
+                if (typeSymbol.SpecialType == SpecialType.None)
+                {
+                    var t = typeSymbol;
+                    while (t != null)
+                    {
+                        if (t.Name == "ISavable" && t.ContainingNamespace?.Name == "Salvavida")
+                        {
+                            result = true;
+                            break;
+                        }
+                        bool hasResult = false;
+                        foreach (var attr in t.GetAttributes())
+                        {
+                            if (attr?.AttributeClass?.ToDisplayString() == "Salvavida.SavableAttribute")
+                            {
+                                result = true;
+                                hasResult = true;
+                                break;
+                            }
+                        }
+                        if (hasResult)
+                            break;
+                        t = t.BaseType;
+                    }
+                }
+                _infoStore!.savableTypes[typeSymbol] = result;
+            }
+            return result;
+        }
+
         protected virtual void WriteProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName, ITypeSymbol typeSymbol, bool saveSeparately)
         {
             var typeFullName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             AddAttributePreventSerialize(sb, false);
             sb.WriteLine($"public {typeFullName} {propertyName}");
+            var savabeType = IsTypeISavable(typeSymbol);
             using (sb.CurlyBracketsScope())
             {
-                sb.WriteLine($"get => {fieldName};");
+                sb.WriteLine("get");
+                using (sb.CurlyBracketsScope())
+                {
+                    if (savabeType)
+                    {
+                        sb.WriteLine($"if ({fieldName} is ISavable sv && sv.SvParent == null)");
+                        sb.WriteLine($"    WatchChild({fieldName}, \"{propertyName}\");");
+                    }
+                    sb.WriteLine($"return {fieldName};");
+                }
                 sb.WriteLine("set");
                 using (sb.CurlyBracketsScope())
                 {
                     sb.WriteLine($"if (!EqualityComparer<{typeFullName}>.Default.Equals({fieldName}, value))");
                     using (sb.CurlyBracketsScope())
                     {
-                        if (typeSymbol.SpecialType == SpecialType.None)
+                        if (savabeType)
                             sb.WriteLine($"UnwatchChild({fieldName});");
                         sb.WriteLine($"{fieldName} = value;");
-                        if (typeSymbol.SpecialType == SpecialType.None)
+                        if (savabeType)
                             sb.WriteLine($"WatchChild(value, \"{propertyName}\");");
                         sb.WriteLine($"OnPropertyChanged(value, \"{propertyName}\");");
                     }
@@ -524,6 +568,7 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine("if (value is not ISavable sv || string.IsNullOrEmpty(sv.SvId))");
                 sb.WriteLine("    return;");
+                sb.WriteLine("_svIsDirty = true;");
                 sb.WriteLine("this.TrySave(sv.SvId, sv, _seperatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, sv.SvId);");
             }
@@ -534,8 +579,7 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine("if (target is not ISavable<T> sv)");
                 sb.WriteLine("    return;");
-                sb.WriteLine("if (target is not ObservableCollection)");
-                sb.WriteLine("    sv.SvId = propertyName;");
+                sb.WriteLine("sv.SvId = propertyName;");
                 sb.WriteLine("this.SetChild(sv);");
                 sb.WriteLine("sv.PropertyChanged += OnChildChanged;");
             }
