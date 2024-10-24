@@ -6,9 +6,9 @@ namespace Salvavida
 {
     public abstract class AsyncJob : INotifyCompletion
     {
-        protected AsyncJob(PathBuilder pathBuilder, CancellationToken token)
+        protected AsyncJob(IObjectPool<PathBuilder>.UsingScope pathScope, CancellationToken token)
         {
-            PathBuilder = pathBuilder;
+            _pathScope = pathScope;
             _token = token;
         }
 
@@ -18,11 +18,12 @@ namespace Salvavida
         private int _jobFinished;
         private int _completed;
         private AsyncJob? _joinedJob;
+        private IObjectPool<PathBuilder>.UsingScope _pathScope;
 
         public bool IsCompleted => _completed > 0;
         public bool JobFinished => _jobFinished > 0;
 
-        public PathBuilder PathBuilder { get; }
+        public PathBuilder? PathBuilder => _pathScope.Value;
 
         public void RunJob()
         {
@@ -49,6 +50,7 @@ namespace Salvavida
                 JoinedJobOnComplete(_joinedJob);
                 _joinedJob.SetComplete();
             }
+            _pathScope.Dispose();
         }
 
         public void OnCompleted(Action continuation)
@@ -72,8 +74,8 @@ namespace Salvavida
 
     public class AsyncVoidJob : AsyncJob
     {
-        public AsyncVoidJob(PathBuilder pathBuilder, Action action, CancellationToken token)
-            : base(pathBuilder, token)
+        public AsyncVoidJob(IObjectPool<PathBuilder>.UsingScope pathScope, Action action, CancellationToken token)
+            : base(pathScope, token)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
         }
@@ -108,8 +110,8 @@ namespace Salvavida
 
     public class AsyncValueJob<T> : AsyncJob
     {
-        public AsyncValueJob(PathBuilder pathBuilder, Func<T> valueGetter, CancellationToken token)
-            : base(pathBuilder, token)
+        public AsyncValueJob(IObjectPool<PathBuilder>.UsingScope pathScope, Func<T> valueGetter, CancellationToken token)
+            : base(pathScope, token)
         {
             _valueGetter = valueGetter ?? throw new ArgumentNullException(nameof(valueGetter));
         }

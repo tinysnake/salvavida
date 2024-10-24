@@ -115,7 +115,7 @@ namespace Salvavida
         }
 
 
-        protected override void TrySaveItems(Serializer serializer, PathBuilder pathBuilder, CollectionChangeInfo<TValue?> e)
+        protected override void TrySaveItems(Serializer serializer, PathBuilder? pathBuilder, CollectionChangeInfo<TValue?> e)
         {
             switch (e.Action)
             {
@@ -139,19 +139,37 @@ namespace Salvavida
                     throw new NotSupportedException();
             }
         }
-        private void KeyCollectionSave(Serializer serializer, PathBuilder pathBuilder, TValue value, bool isRemove)
+        private void KeyCollectionSave(Serializer serializer, PathBuilder? pathBuilder, TValue value, bool isRemove)
         {
             if (value is not ISavable sv)
                 throw new ArgumentException("values have to be implementations of ISavable");
             if (isRemove)
-                serializer.Delete(sv, pathBuilder, PathBuilder.Type.Collection);
+            {
+                if (pathBuilder == null)
+                    serializer.FreshDeleteByPolicy(sv);
+                else
+                    serializer.Delete(sv, pathBuilder, PathBuilder.Type.Collection);
+            }
             else
-                serializer.Save(sv, pathBuilder, PathBuilder.Type.Collection);
+            {
+                if (pathBuilder == null)
+                    serializer.FreshSaveByPolicy(sv);
+                else
+                    serializer.Save(sv, pathBuilder, PathBuilder.Type.Collection);
+            }
         }
-        private void KeyCollectionSave(Serializer serializer, PathBuilder pathBuilder, IList<TValue?> values, bool isRemove)
+        private void KeyCollectionSave(Serializer serializer, PathBuilder? pathBuilder, IList<TValue?> values, bool isRemove)
         {
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
+            if (pathBuilder == null)
+                serializer.FreshActionByPolicy(this, path => KeyCollectionSaveAction(serializer, path, values, isRemove));
+            else
+                KeyCollectionSaveAction(serializer, pathBuilder, values, isRemove);
+        }
+
+        private void KeyCollectionSaveAction(Serializer serializer, PathBuilder pathBuilder, IList<TValue?> values, bool isRemove)
+        {
             for (var i = 0; i < values.Count; i++)
             {
                 if (values[i] is not ISavable value)
@@ -163,11 +181,14 @@ namespace Salvavida
             }
         }
 
-        protected override void TrySaveSource(Serializer serializer, PathBuilder path)
+        protected override void TrySaveSource(Serializer serializer, PathBuilder? pathBuilder)
         {
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
-            serializer.SaveDict(_dict, path);
+            if (pathBuilder == null)
+                serializer.FreshActionByPolicy(this, path => serializer.SaveDict(_dict, path));
+            else
+                serializer.SaveDict(_dict, pathBuilder);
         }
 
         public void Add(TKey key, TValue? value)

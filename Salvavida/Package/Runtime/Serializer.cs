@@ -78,10 +78,32 @@ namespace Salvavida
             return false;
         }
 
-        public FreshActionLocker BeginFreshAction(out PathBuilder pathBuilder)
+        protected FreshActionLocker BeginFreshAction(out PathBuilder pathBuilder)
         {
             pathBuilder = _pathBuilder;
             return new FreshActionLocker(this);
+        }
+
+        public void FreshActionByPolicy<T>(T parent, Action<PathBuilder> action) where T : ISavable
+        {
+
+        }
+
+        public void FreshActionAsync<T>(T parent, Action<PathBuilder> action, CancellationToken token) where T : ISavable
+        {
+            var pathScope = PathBuilderPool.Get(out var path);
+            parent.GetParentPathAsSpan(path);
+            ThrowIfPathIsEmpty(path);
+            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => action(pathScope.Value!), token));
+        }
+
+        public void FreshActionSync<T>(T parent, Action<PathBuilder> action) where T : ISavable
+        {
+            AsyncIO.ForceComplete();
+            using var locker = BeginFreshAction(out var path);
+            parent.GetParentPathAsSpan(path);
+            ThrowIfPathIsEmpty(path);
+            action(path);
         }
 
         public bool FreshHas<T>(T data) where T : ISavable
@@ -97,9 +119,9 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             data.GetParentPathAsSpan(path);
-            var job = new AsyncValueJob<bool>(path, () => Has(path), token);
+            var job = new AsyncValueJob<bool>(pathScope, () => Has(path), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
@@ -142,7 +164,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             data.GetParentPathAsSpan(path);
             DoUpdateId(data, path, oldId.Span);
         }
@@ -188,10 +210,10 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             data.GetSavePathAsSpan(path);
             ThrowIfPathIsEmpty(path);
-            AsyncIO.QueueJob(new AsyncVoidJob(path, () => DoUpdateOrder(data, path, order), token));
+            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => DoUpdateOrder(data, path, order), token));
         }
 
         public void UpdateOrder(ISavable data, PathBuilder path, int order)
@@ -237,10 +259,10 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             data.GetSavePathAsSpan(path);
             ThrowIfPathIsEmpty(path);
-            var job = new AsyncVoidJob(path, () => DoSaveObject(data, path), token);
+            var job = new AsyncVoidJob(pathScope, () => DoSaveObject(data, path), token);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -261,11 +283,11 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             parent.GetSavePathAsSpan(path);
             ThrowIfPathIsEmpty(path);
             path.Push(propName.Span, type);
-            var job = new AsyncVoidJob(path, () => DoSaveObject(data, path), default);
+            var job = new AsyncVoidJob(pathScope, () => DoSaveObject(data, path), default);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -340,9 +362,9 @@ namespace Salvavida
         {
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             path.Push(svid.Span, PathBuilder.Type.Property);
-            var job = new AsyncValueJob<T?>(path, () => DoRead<T>(path, out _), token);
+            var job = new AsyncValueJob<T?>(pathScope, () => DoRead<T>(path, out _), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
@@ -398,6 +420,14 @@ namespace Salvavida
 
         protected abstract Dictionary<TKey, TValue?>? DoReadDict<TKey, TValue>(PathBuilder path, bool saveSeparately);
 
+        public void FreshDeleteByPolicy<T>(T data) where T : ISavable
+        {
+            if (SavePolicy == SavePolicy.Sync)
+                FreshDeleteSync(data);
+            else
+                FreshDeleteAsync(data, default);
+        }
+
         public void FreshDeleteSync<T>(T data) where T : ISavable
         {
             if (data == null)
@@ -413,10 +443,10 @@ namespace Salvavida
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            using var pathScope = PathBuilderPool.Get(out var path);
+            var pathScope = PathBuilderPool.Get(out var path);
             data.GetSavePathAsSpan(path);
             ThrowIfPathIsEmpty(path);
-            AsyncIO.QueueJob(new AsyncVoidJob(path, () => DoDelete(path), token));
+            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => DoDelete(path), token));
         }
 
         public void Delete<T>(T data, PathBuilder path, PathBuilder.Type type) where T : ISavable
@@ -438,6 +468,36 @@ namespace Salvavida
         }
 
         protected abstract void DoDelete(PathBuilder path);
+
+        public void FreshDeleteAllByPolicy<T>(T savable) where T : ISavable
+        {
+            if (SavePolicy == SavePolicy.Sync)
+                FreshDeleteAllSync(savable);
+            else
+                FreshDeleteAllAsync(savable, default);
+        }
+
+        public void FreshDeleteAllSync<T>(T savable) where T : ISavable
+        {
+            if (savable == null)
+                throw new ArgumentNullException(nameof(savable));
+            AsyncIO.ForceComplete();
+            using var locker = BeginFreshAction(out var path);
+            savable.GetSavePathAsSpan(path);
+            ThrowIfPathIsEmpty(path);
+            DeleteAll(path);
+        }
+
+        public void FreshDeleteAllAsync<T>(T savable, CancellationToken token) where T : ISavable
+        {
+            if (savable == null)
+                throw new ArgumentNullException(nameof(savable));
+            var pathScope = PathBuilderPool.Get(out var path);
+            savable.GetSavePathAsSpan(path);
+            ThrowIfPathIsEmpty(path);
+            DeleteAll(path);
+            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => DeleteAll(path), token));
+        }
 
         public void DeleteAll<T>(T savable, PathBuilder path, PathBuilder.Type type) where T : ISavable
         {

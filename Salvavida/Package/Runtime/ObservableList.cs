@@ -93,7 +93,7 @@ namespace Salvavida
             return CollectionChangeInfo<T?>.Add(_list, 0);
         }
 
-        protected override void TrySaveItems(Serializer serializer, PathBuilder path, CollectionChangeInfo<T?> e)
+        protected override void TrySaveItems(Serializer serializer, PathBuilder? path, CollectionChangeInfo<T?> e)
         {
             base.TrySaveItems(serializer, path, e);
             if (!_orderMatters)
@@ -111,14 +111,17 @@ namespace Salvavida
             }
         }
 
-        protected override void TrySaveSource(Serializer serializer, PathBuilder pathBuilder)
+        protected override void TrySaveSource(Serializer serializer, PathBuilder? pathBuilder)
         {
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
-            serializer.SaveList(_list, pathBuilder);
+            if (pathBuilder == null)
+                serializer.FreshActionByPolicy(this, path => serializer.SaveList(_list, path));
+            else
+                serializer.SaveList(_list, pathBuilder);
         }
 
-        private void TryUpdateOrder(Serializer serializer, PathBuilder pathBuilder, int index)
+        private void TryUpdateOrder(Serializer serializer, PathBuilder? pathBuilder, int index)
         {
             var count = _list.Count - index;
             if (count <= 0)

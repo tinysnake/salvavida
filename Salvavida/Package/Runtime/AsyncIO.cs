@@ -17,7 +17,7 @@ namespace Salvavida
 
         public void QueueJob(AsyncJob job)
         {
-            var hashCode = job.PathBuilder.GetHashCode();
+            var hashCode = job.PathBuilder!.GetHashCode();
             if (_jobs.TryGetValue(hashCode, out var j))
             {
                 job.JoinJob(j);
