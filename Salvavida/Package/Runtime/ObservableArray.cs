@@ -25,10 +25,10 @@ namespace Salvavida
             set
             {
                 var oldVal = _arr[index];
-                TryUnWatch(oldVal);
                 _arr[index] = value;
                 OnItemSet(value, index);
                 OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldVal, value, index));
+                TryUnWatch(oldVal);
             }
         }
 
@@ -56,12 +56,12 @@ namespace Salvavida
         {
             if (_arr != null)
             {
+                if (notifyChanges)
+                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
                 for (var i = 0; i < _arr.Length; i++)
                 {
                     TryUnWatch(_arr[i]);
                 }
-                if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
             }
             _arr = array;
             if (_arr != null)

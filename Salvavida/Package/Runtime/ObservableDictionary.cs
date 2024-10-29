@@ -29,13 +29,13 @@ namespace Salvavida
             set
             {
                 var add = !_dict.TryGetValue(key, out var oldValue);
-                TryUnWatch(oldValue);
                 _dict[key] = value;
                 OnItemSet(value, key);
                 if (add)
                     OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
                 else
                     OnCollectionChange(CollectionChangeInfo<TValue?>.Replace(oldValue, value, -1));
+                TryUnWatch(oldValue);
             }
         }
 
@@ -77,12 +77,12 @@ namespace Salvavida
         {
             if (_dict != null)
             {
+                if (notifyChanges)
+                    OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
                 foreach (var (_, item) in _dict)
                 {
                     TryUnWatch(item);
                 }
-                if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
             }
             _dict = dict;
             if (_dict != null)
@@ -209,12 +209,12 @@ namespace Salvavida
 
         public void Clear()
         {
+            OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
             foreach (var value in _dict.Values)
             {
                 TryUnWatch(value);
             }
             _dict.Clear();
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
         }
 
         public bool Contains(KeyValuePair<TKey, TValue?> item) => ((ICollection<KeyValuePair<TKey, TValue?>>)_dict).Contains(item);
@@ -233,8 +233,8 @@ namespace Salvavida
             {
                 if (_dict.Remove(key))
                 {
-                    TryUnWatch(item);
                     OnCollectionChange(CollectionChangeInfo<TValue?>.Remove(item, -1));
+                    TryUnWatch(item);
                     return true;
                 }
             }
@@ -245,8 +245,8 @@ namespace Salvavida
         {
             if (((ICollection<KeyValuePair<TKey, TValue?>>)_dict).Remove(item))
             {
-                TryUnWatch(item.Value);
                 OnCollectionChange(CollectionChangeInfo<TValue?>.Remove(item.Value, -1));
+                TryUnWatch(item.Value);
                 return true;
             }
             return false;

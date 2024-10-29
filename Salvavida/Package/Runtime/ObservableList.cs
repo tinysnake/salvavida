@@ -27,10 +27,10 @@ namespace Salvavida
             set
             {
                 var oldValue = _list[index];
-                TryUnWatch(oldValue);
                 _list[index] = value;
                 OnItemSet(value, index);
                 OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldValue, value, index));
+                TryUnWatch(oldValue);
             }
         }
 
@@ -62,12 +62,12 @@ namespace Salvavida
         {
             if (_list != null)
             {
+                if (notifyChanges)
+                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
                 for (var i = 0; i < _list.Count; i++)
                 {
                     TryUnWatch(_list[i]);
                 }
-                if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
             }
             _list = list;
             if (_list != null)
@@ -170,12 +170,12 @@ namespace Salvavida
 
         public void Clear()
         {
+            OnCollectionChange(CollectionChangeInfo<T?>.Reset());
             foreach (var item in _list)
             {
                 TryUnWatch(item);
             }
             _list.Clear();
-            OnCollectionChange(CollectionChangeInfo<T?>.Reset());
         }
 
         public bool Contains(T? item) => _list.Contains(item);
@@ -212,8 +212,8 @@ namespace Salvavida
             if (index >= 0)
             {
                 _list.RemoveAt(index);
-                TryUnWatch(item);
                 OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
+                TryUnWatch(item);
                 return true;
             }
             return false;
@@ -223,20 +223,20 @@ namespace Salvavida
         {
             var arr = new T?[count];
             _list.CopyTo(index, arr, 0, count);
+            OnCollectionChange(CollectionChangeInfo<T?>.Remove(arr, index));
             foreach (var item in arr)
             {
                 TryUnWatch(item);
             }
             _list.RemoveRange(index, count);
-            OnCollectionChange(CollectionChangeInfo<T?>.Remove(arr, index));
         }
 
         public void RemoveAt(int index)
         {
             var item = _list[index];
-            TryUnWatch(item);
             _list.RemoveAt(index);
             OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
+            TryUnWatch(item);
         }
 
         public void Move(int oldIndex, int newIndex)
