@@ -2,7 +2,6 @@ using UnityEngine;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
-
 #if USE_UNITASK
 using Cysharp.Threading.Tasks;
 #endif
@@ -59,7 +58,8 @@ namespace Salvavida.Unity
         {
             ForceComplete();
             _threadedTask = null;
-            ParentObject.GetComponent<UnityAsyncIOScript>()._asyncIOList.Remove(this);
+            if (ParentObject)
+                ParentObject.GetComponent<UnityAsyncIOScript>()._asyncIOList.Remove(this);
         }
     }
 
