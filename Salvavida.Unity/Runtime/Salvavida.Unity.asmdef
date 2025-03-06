@@ -2,8 +2,8 @@
     "name": "Salvavida.Unity",
     "rootNamespace": "",
     "references": [
-        "GUID:38ab3239ceba52d4995f4871ee0cf6c3",
-        "GUID:f51ebe6a0ceec4240a699833d6309b23"
+        "Salvavida",
+        "UniTask"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
