@@ -27,11 +27,11 @@ namespace Salvavida.Generator.Debug
 
         public bool IsDirty { get; private set; }
 
-        public void AfterDeserialize(Serializer serializer, PathBuilder path)
+        public void AfterDeserialize(Serializer serializer, SerializeContext path)
         {
         }
 
-        public void AfterSerialize(Serializer serializer, PathBuilder path)
+        public void AfterSerialize(Serializer serializer, SerializeContext path)
         {
         }
 

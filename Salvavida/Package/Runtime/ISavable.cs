@@ -13,8 +13,8 @@ namespace Salvavida
         void Invalidate(bool recursively);
 
         void BeforeSerialize(Serializer serializer);
-        void AfterSerialize(Serializer serializer, PathBuilder path);
-        void AfterDeserialize(Serializer serializer, PathBuilder path);
+        void AfterSerialize(Serializer serializer, SerializeContext ctx);
+        void AfterDeserialize(Serializer serializer, SerializeContext ctx);
     }
 
     public interface ISavable<T> : ISavable, ISvPropertyChanged<T>

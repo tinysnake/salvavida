@@ -93,35 +93,35 @@ namespace Salvavida
             return CollectionChangeInfo<T?>.Add(_list, 0);
         }
 
-        protected override void TrySaveItems(Serializer serializer, PathBuilder? path, CollectionChangeInfo<T?> e)
+        protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
         {
-            base.TrySaveItems(serializer, path, e);
+            base.TrySaveItems(serializer, ctx, e);
             if (!_orderMatters)
                 return;
             if (e.Action == CollectionChangedAction.Add && e.NewStartingIndex >= 0)
             {
                 var count = e.IsSingleItem ? 1 : e.NewItems!.Count;
                 var index = e.NewStartingIndex + count;
-                TryUpdateOrder(serializer, path, index);
+                TryUpdateOrder(serializer, ctx, index);
             }
             else if (e.Action == CollectionChangedAction.Remove && e.OldStartingIndex >= 0)
             {
                 var index = e.OldStartingIndex;
-                TryUpdateOrder(serializer, path, index);
+                TryUpdateOrder(serializer, ctx, index);
             }
         }
 
-        protected override void TrySaveSource(Serializer serializer, PathBuilder? pathBuilder)
+        protected override void TrySaveSource(Serializer serializer, SerializeContext? ctx)
         {
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
-            if (pathBuilder == null)
+            if (ctx == null)
                 serializer.FreshActionByPolicy(this, path => serializer.SaveList(_list, path));
             else
-                serializer.SaveList(_list, pathBuilder);
+                serializer.SaveList(_list, ctx);
         }
 
-        private void TryUpdateOrder(Serializer serializer, PathBuilder? pathBuilder, int index)
+        private void TryUpdateOrder(Serializer serializer, SerializeContext? ctx, int index)
         {
             var count = _list.Count - index;
             if (count <= 0)
@@ -136,7 +136,7 @@ namespace Salvavida
                     sv.SvId = i.ToString();
                 list.Add(_list[i]);
             }
-            CollectionUpdateOrder(serializer, pathBuilder, list);
+            CollectionUpdateOrder(serializer, ctx, list);
         }
 
         public void Add(T? item)

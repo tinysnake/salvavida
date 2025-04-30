@@ -96,14 +96,14 @@ namespace Salvavida
             return CollectionChangeInfo<T?>.Add(_arr, 0);
         }
 
-        protected override void TrySaveSource(Serializer serializer, PathBuilder? pathBuilder)
+        protected override void TrySaveSource(Serializer serializer, SerializeContext? ctx)
         {
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
-            if (pathBuilder == null)
+            if (ctx == null)
                 serializer.FreshActionByPolicy(this, path => serializer.SaveArray(_arr, path));
             else
-                serializer.SaveArray(_arr, pathBuilder);
+                serializer.SaveArray(_arr, ctx);
         }
 
         public void Add(T? item) => throw new NotSupportedException();

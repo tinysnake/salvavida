@@ -616,7 +616,7 @@ namespace Salvavida.Generator
             sb.WriteLine("partial void OnBeforeSerialize(Serializer serializer);");
             sb.WriteLine();
 
-            sb.WriteLine("void ISavable.AfterSerialize(Serializer serializer, PathBuilder path)");
+            sb.WriteLine("void ISavable.AfterSerialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())
             {
                 if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
@@ -624,19 +624,19 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"serializer.TrySaveObject({fieldName}, path, \"{prop}\");");
+                        sb.WriteLine($"serializer.TrySaveObject({fieldName}, ctx, \"{prop}\");");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
-                        sb.WriteLine($"{kvp.Key}?.TrySave(serializer, path);");
+                        sb.WriteLine($"{kvp.Key}?.TrySave(serializer, ctx);");
                     }
                 }
-                sb.WriteLine("OnAfterSerialize(serializer, path);");
+                sb.WriteLine("OnAfterSerialize(serializer, ctx);");
             }
-            sb.WriteLine("partial void OnAfterSerialize(Serializer serializer, PathBuilder path);");
+            sb.WriteLine("partial void OnAfterSerialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
 
-            sb.WriteLine("void ISavable.AfterDeserialize(Serializer serializer, PathBuilder path)");
+            sb.WriteLine("void ISavable.AfterDeserialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())
             {
                 if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
@@ -644,7 +644,7 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(path, \"{prop}\");");
+                        sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\");");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
@@ -663,13 +663,13 @@ namespace Salvavida.Generator
 
                         var checkIsSavableSyntax = $"SvHelper.CheckIsSavable<{typeParameters.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>()";
 
-                        sb.WriteLine($"<{typeParametersStr}>(path, \"{kvp.Key}\", {checkIsSavableSyntax});", true);
+                        sb.WriteLine($"<{typeParametersStr}>(ctx, \"{kvp.Key}\", {checkIsSavableSyntax});", true);
                         sb.WriteLine($"({kvp.Key} as ISavable).SetDirty(false, false);");
                     }
                 }
-                sb.WriteLine("OnAfterDeserialize(serializer, path);");
+                sb.WriteLine("OnAfterDeserialize(serializer, ctx);");
             }
-            sb.WriteLine("partial void OnAfterDeserialize(Serializer serializer, PathBuilder path);");
+            sb.WriteLine("partial void OnAfterDeserialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
         }
 

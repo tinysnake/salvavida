@@ -34,33 +34,34 @@ namespace Salvavida
             _isDirty = dirty;
         }
 
-        public void TrySave(Serializer? serializer, PathBuilder pathBuilder)
+        public void TrySave(Serializer? serializer, SerializeContext ctx)
         {
             if (SvParent == null || string.IsNullOrEmpty(SvId) || !_isDirty)
                 return;
             serializer ??= SvParent.GetSerializer();
             if (serializer == null)
                 return;
-            pathBuilder.Push(SvId, PathBuilder.Type.Property);
+            var path = ctx.Path;
+            path.Push(SvId, PathBuilder.Type.Property);
             if (SaveSeparately)
-                TrySaveSeparatelyByEvent(serializer, pathBuilder);
-            pathBuilder.Pop();
+                TrySaveSeparatelyByEvent(serializer, ctx);
+            path.Pop();
             _isDirty = false;
         }
 
-        protected abstract void TrySaveSeparatelyByEvent(Serializer serializer, PathBuilder? pathBuilder);
+        protected abstract void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx);
 
 
 
-        protected abstract void TrySaveSource(Serializer serializer, PathBuilder? pathBuilder);
+        protected abstract void TrySaveSource(Serializer serializer, SerializeContext? ctx);
 
 
-        protected void ClearCollection(Serializer serializer, PathBuilder? pathBuilder)
+        protected void ClearCollection(Serializer serializer, SerializeContext? ctx)
         {
-            if (pathBuilder == null)
+            if (ctx == null)
                 serializer.FreshDeleteAllByPolicy(this);
             else
-                serializer.DeleteAll(pathBuilder);
+                serializer.DeleteAll(ctx);
         }
 
         void ISavable.SetParent(ISavable? parent)
@@ -77,11 +78,11 @@ namespace Salvavida
         {
         }
 
-        public virtual void AfterSerialize(Serializer serializer, PathBuilder builder)
+        public virtual void AfterSerialize(Serializer serializer, SerializeContext ctx)
         {
         }
 
-        public virtual void AfterDeserialize(Serializer serializer, PathBuilder path)
+        public virtual void AfterDeserialize(Serializer serializer, SerializeContext ctx)
         {
         }
 
@@ -143,22 +144,22 @@ namespace Salvavida
             CollectionChanged?.Invoke(e);
         }
 
-        protected override void TrySaveSeparatelyByEvent(Serializer serializer, PathBuilder? pathBuilder)
+        protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx)
         {
-            TrySaveSeparatelyByEvent(serializer, pathBuilder, CreateSaveAllEvent());
+            TrySaveSeparatelyByEvent(serializer, ctx, CreateSaveAllEvent());
         }
 
-        protected void TrySaveSeparatelyByEvent(Serializer serializer, PathBuilder? pathBuilder, CollectionChangeInfo<TElem?> e)
+        protected void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TElem?> e)
         {
             if (!SaveSeparately)
                 throw new NotSupportedException();
             if (!IsSavableCollection)
-                TrySaveSource(serializer, pathBuilder);
+                TrySaveSource(serializer, ctx);
             else
-                TrySaveItems(serializer, pathBuilder, e);
+                TrySaveItems(serializer, ctx, e);
         }
 
-        protected virtual void TrySaveItems(Serializer serializer, PathBuilder? pathBuilder, CollectionChangeInfo<TElem?> e)
+        protected virtual void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TElem?> e)
         {
             if (string.IsNullOrEmpty(SvId) || SvParent == null)
                 return;
@@ -167,29 +168,29 @@ namespace Salvavida
                 case CollectionChangedAction.Add:
                 case CollectionChangedAction.Remove:
                     if (e.IsSingleItem)
-                        CollectionSave(serializer, pathBuilder, e.OldItem, e.NewItem, e.Action == CollectionChangedAction.Add ? e.NewStartingIndex : e.OldStartingIndex);
+                        CollectionSave(serializer, ctx, e.OldItem, e.NewItem, e.Action == CollectionChangedAction.Add ? e.NewStartingIndex : e.OldStartingIndex);
                     else
-                        CollectionSave(serializer, pathBuilder, e.OldItems!, e.NewItems!, e.Action == CollectionChangedAction.Add ? e.NewStartingIndex : e.OldStartingIndex);
+                        CollectionSave(serializer, ctx, e.OldItems!, e.NewItems!, e.Action == CollectionChangedAction.Add ? e.NewStartingIndex : e.OldStartingIndex);
                     break;
                 case CollectionChangedAction.Replace:
-                    ReplaceSave(serializer, pathBuilder, e.OldItem as ISavable, e.NewItem as ISavable);
+                    ReplaceSave(serializer, ctx, e.OldItem as ISavable, e.NewItem as ISavable);
                     break;
                 case CollectionChangedAction.Reset:
-                    ClearCollection(serializer, pathBuilder);
+                    ClearCollection(serializer, ctx);
                     break;
                 default:
                     throw new NotSupportedException();
             }
         }
 
-        protected void CollectionSave(Serializer serializer, PathBuilder? path, TElem? oldItem, TElem? newItem, int startingIndex)
+        protected void CollectionSave(Serializer serializer, SerializeContext? ctx, TElem? oldItem, TElem? newItem, int startingIndex)
         {
             if (oldItem is ISavable old)
             {
-                if (path == null)
+                if (ctx == null)
                     serializer.FreshDeleteByPolicy(old);
                 else
-                    serializer.Delete(old, path, PathBuilder.Type.Collection);
+                    serializer.Delete(old, ctx, PathBuilder.Type.Collection);
             }
             if (newItem is ISavable nuevo)
             {
@@ -197,16 +198,16 @@ namespace Salvavida
                 if (newItem is ISaveWithOrder swo && swo.SvOrder != startingIndex)
                     throw new Exception($"index mismatch, svOrder: {swo.SvOrder}, index: {startingIndex}");
 #endif
-                if (path == null)
+                if (ctx == null)
                     serializer.FreshSaveByPolicy(nuevo);
                 else
-                    serializer.Save(nuevo, path, PathBuilder.Type.Collection);
+                    serializer.Save(nuevo, ctx, PathBuilder.Type.Collection);
             }
         }
 
-        protected void CollectionSave(Serializer serializer, PathBuilder? path, IList<TElem?> oldItems, IList<TElem?> newItems, int startingIndex)
+        protected void CollectionSave(Serializer serializer, SerializeContext? ctx, IList<TElem?> oldItems, IList<TElem?> newItems, int startingIndex)
         {
-            if (path == null)
+            if (ctx == null)
             {
                 serializer.FreshActionByPolicy(this, pathBuilder =>
                 {
@@ -214,10 +215,10 @@ namespace Salvavida
                 });
             }
             else
-                CollectionSaveAction(serializer, path, oldItems, newItems, startingIndex);
+                CollectionSaveAction(serializer, ctx, oldItems, newItems, startingIndex);
         }
 
-        private void CollectionSaveAction(Serializer serializer, PathBuilder path, IList<TElem?> oldItems, IList<TElem?> newItems, int startingIndex)
+        private void CollectionSaveAction(Serializer serializer, SerializeContext ctx, IList<TElem?> oldItems, IList<TElem?> newItems, int startingIndex)
         {
             if (oldItems != null)
             {
@@ -225,7 +226,7 @@ namespace Salvavida
                 {
                     var oldItem = oldItems[i];
                     if (oldItem is ISavable old)
-                        serializer.Delete(old, path, PathBuilder.Type.Collection);
+                        serializer.Delete(old, ctx, PathBuilder.Type.Collection);
                 }
             }
 
@@ -240,36 +241,36 @@ namespace Salvavida
                         if (newItem is ISaveWithOrder swo && swo.SvOrder != startingIndex + i)
                             throw new Exception($"index mismatch, svOrder: {swo.SvOrder}, index: {startingIndex + i}");
 #endif
-                        serializer.Save(nuevo, path, PathBuilder.Type.Collection);
+                        serializer.Save(nuevo, ctx, PathBuilder.Type.Collection);
                     }
                 }
             }
         }
 
-        protected void ReplaceSave(Serializer serializer, PathBuilder? pathBuilder, ISavable? oldItem, ISavable? newItem)
+        protected void ReplaceSave(Serializer serializer, SerializeContext? ctx, ISavable? oldItem, ISavable? newItem)
         {
             if (oldItem != null)
             {
                 if (newItem == null || oldItem.SvId != newItem.SvId)
                 {
-                    if (pathBuilder == null)
+                    if (ctx == null)
                         serializer.FreshDeleteAllByPolicy(oldItem);
                     else
-                        serializer.Delete(oldItem, pathBuilder, PathBuilder.Type.Collection);
+                        serializer.Delete(oldItem, ctx, PathBuilder.Type.Collection);
                 }
             }
             if (newItem != null)
             {
-                if (pathBuilder == null)
+                if (ctx == null)
                     serializer.FreshSaveByPolicy(newItem);
                 else
-                    serializer.Save(newItem, pathBuilder, PathBuilder.Type.Collection);
+                    serializer.Save(newItem, ctx, PathBuilder.Type.Collection);
             }
         }
 
-        protected void CollectionUpdateOrder(Serializer serializer, PathBuilder? pathBuilder, IList<TElem?> items)
+        protected void CollectionUpdateOrder(Serializer serializer, SerializeContext? ctx, IList<TElem?> items)
         {
-            if (pathBuilder == null)
+            if (ctx == null)
             {
                 serializer.FreshActionByPolicy(this, path =>
                 {
@@ -278,16 +279,16 @@ namespace Salvavida
             }
             else
             {
-                CollectionUpdateOrder(serializer, pathBuilder, items);
+                CollectionUpdateOrder(serializer, ctx, items);
             }
         }
-        protected void CollectionUpdateOrderAction(Serializer serializer, PathBuilder pathBuilder, IList<TElem?> items)
+        protected void CollectionUpdateOrderAction(Serializer serializer, SerializeContext ctx, IList<TElem?> items)
         {
             for (var i = 0; i < items.Count; i++)
             {
                 var item = items[i];
                 if (item is ISavable sv)
-                    serializer.UpdateOrder(sv, pathBuilder, i);
+                    serializer.UpdateOrder(sv, ctx, i);
             }
         }
 

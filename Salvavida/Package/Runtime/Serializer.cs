@@ -20,27 +20,34 @@ namespace Salvavida
             public FreshActionLocker(Serializer serializer)
             {
                 _serializer = serializer;
-                var originValue = Interlocked.CompareExchange(ref _serializer._pathBuilderLocker, 1, 0);
-                if (originValue > 0)
-                    throw new InvalidOperationException("path builder is already in use!");
-                serializer._pathBuilder.Clear();
+                _context = serializer.GetContext(true);
             }
 
             private readonly Serializer _serializer;
+            private readonly SerializeContext _context;
 
-            public PathBuilder PathBuilder => _serializer._pathBuilder;
+            public SerializeContext Context => _context;
+            //public PathBuilder PathBuilder => _serializer._pathBuilder;
 
             public void Dispose()
             {
+                _serializer.ReturnContext(_context);
                 Interlocked.CompareExchange(ref _serializer._pathBuilderLocker, 0, 1);
             }
         }
 
-        private readonly PathBuilder _pathBuilder = new();
+        private readonly PathBuilder _lockedPathBuilder = new();
         private int _pathBuilderLocker = 0;
         protected IIdGenerator? _idGen;
 
-        public IObjectPool<PathBuilder> PathBuilderPool { get; set; } = new DefaultObjectPool<PathBuilder>(() => new PathBuilder(), path => path.Clear(), 10);
+        protected Serializer()
+        {
+            ContextBuilderPool = new DefaultObjectPool<SerializeContext>(CreateContext, null, 10);
+            PathBuilderPool = new DefaultObjectPool<PathBuilder>(() => new PathBuilder(), x => x.Clear(), 10);
+        }
+
+        public IObjectPool<SerializeContext> ContextBuilderPool { get; set; }
+        public IObjectPool<PathBuilder> PathBuilderPool { get; set; }
         public SavePolicy SavePolicy { get; set; } = SavePolicy.Sync;
         public virtual IIdGenerator IdGenerator
         {
@@ -65,6 +72,53 @@ namespace Salvavida
             return obj;
         }
 
+        protected virtual SerializeContext CreateContext() => new();
+
+        protected virtual SerializeContext GetContext(bool withUniqueLock)
+        {
+            var ctx = ContextBuilderPool.Get();
+            ctx.UniqueLocked = withUniqueLock;
+            if (withUniqueLock)
+            {
+                var originValue = Interlocked.CompareExchange(ref _pathBuilderLocker, 1, 0);
+                if (originValue > 0)
+                    throw new InvalidOperationException("path builder is already in use!");
+                _lockedPathBuilder.Clear();
+                ctx.Path = _lockedPathBuilder;
+            }
+            else
+            {
+                ctx.Path = PathBuilderPool.Get();
+            }
+            OnGetContext(ctx, withUniqueLock);
+            return ctx;
+        }
+
+        protected virtual void OnGetContext(SerializeContext ctx, bool withUniqueLock)
+        {
+        }
+
+        protected virtual void ReturnContext(SerializeContext ctx)
+        {
+            var path = ctx.Path;
+            if (ctx.UniqueLocked)
+            {
+                Interlocked.CompareExchange(ref _pathBuilderLocker, 0, 1);
+            }
+            else
+            {
+                PathBuilderPool.Return(path);
+            }
+            ctx.Path = null;
+            OnReturnContext(ctx);
+            ContextBuilderPool.Return(ctx);
+        }
+
+        protected virtual void OnReturnContext(SerializeContext ctx)
+        {
+
+        }
+
         private void ThrowIfPathIsEmpty(PathBuilder pb)
         {
             if (pb.IsEmpty)
@@ -78,84 +132,100 @@ namespace Salvavida
             return false;
         }
 
-        protected FreshActionLocker BeginFreshAction(out PathBuilder pathBuilder)
+        protected FreshActionLocker BeginFreshAction(out SerializeContext ctxBuilder)
         {
-            pathBuilder = _pathBuilder;
-            return new FreshActionLocker(this);
+            var locker = new FreshActionLocker(this);
+            ctxBuilder = locker.Context;
+            return locker;
         }
 
-        public void FreshActionByPolicy<T>(T parent, Action<PathBuilder> action) where T : ISavable
-        {
 
+        public void FreshActionByPolicy<T>(T parent, Action<SerializeContext> action) where T : ISavable
+        {
+            if (SavePolicy == SavePolicy.Sync)
+                FreshActionSync(parent, action);
+            else
+                FreshActionAsync(parent, action, default);
         }
 
-        public void FreshActionAsync<T>(T parent, Action<PathBuilder> action, CancellationToken token) where T : ISavable
+        public void FreshActionAsync<T>(T parent, Action<SerializeContext> action, CancellationToken token) where T : ISavable
         {
-            var pathScope = PathBuilderPool.Get(out var path);
-            parent.GetParentPathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => action(pathScope.Value!), token));
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            AsyncIO.QueueJob(new AsyncVoidJob(ctxScope, x => action(x!), token));
         }
 
-        public void FreshActionSync<T>(T parent, Action<PathBuilder> action) where T : ISavable
+        public void FreshActionSync<T>(T parent, Action<SerializeContext> action) where T : ISavable
         {
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            parent.GetParentPathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            action(path);
+            using var locker = BeginFreshAction(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            action(ctx);
         }
 
         public bool FreshHas<T>(T data) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            using var locker = BeginFreshAction(out var path);
-            data.GetParentPathAsSpan(path);
-            return Has(path);
+            using var locker = BeginFreshAction(out var ctx);
+            data.GetParentPathAsSpan(ctx.Path);
+            return Has(ctx);
         }
 
         public async Task<bool> FreshHasAsync<T>(T data, CancellationToken token) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            var pathScope = PathBuilderPool.Get(out var path);
-            data.GetParentPathAsSpan(path);
-            var job = new AsyncValueJob<bool>(pathScope, () => Has(path), token);
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            data.GetParentPathAsSpan(ctx.Path);
+            var job = new AsyncValueJob<bool>(ctxScope, x => Has(x), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
 
-        public bool Has<T>(T data, PathBuilder path) where T : ISavable
+        public bool Has<T>(T data, SerializeContext ctx) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
+            var path = ctx.Path;
             path.Push(data.SvId!, PathBuilder.Type.Property);
-            var result = Has(path);
+            var result = Has(ctx);
             path.Pop();
             return result;
         }
 
-        protected abstract bool Has(PathBuilder path);
+        protected abstract bool Has(SerializeContext ctx);
 
-        public bool HasCollection(PathBuilder path, ReadOnlySpan<char> propName)
+        public bool HasCollection(SerializeContext ctx, ReadOnlySpan<char> propName)
         {
-            var result = HasCollection(path.Push(propName, PathBuilder.Type.Collection));
-            path.Pop();
+            var path = ctx.Path;
+
+            path.Push(propName, PathBuilder.Type.Collection);
+            bool result = false;
+            try
+            {
+                result = HasCollection(ctx);
+            }
+            finally
+            {
+                path.Pop();
+            }
             return result;
         }
 
-        public abstract bool HasCollection(PathBuilder path);
+        public abstract bool HasCollection(SerializeContext ctx);
 
         public void FreshUpdateIdByPolicy<T>(T data, ReadOnlySpan<char> oldId) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            using var locker = BeginFreshAction(out var path);
-            data.GetParentPathAsSpan(path);
+            using var locker = BeginFreshAction(out var ctx);
+            data.GetParentPathAsSpan(ctx.Path);
             // data may not have parent, so path will be empty
             // so no need to check
-            DoUpdateId(data, path, oldId);
+            DoUpdateId(data, ctx, oldId);
         }
 
         public void FreshUpdateIdAsync<T>(T data, ReadOnlyMemory<char> oldId) where T : ISavable
@@ -164,9 +234,9 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var pathScope = PathBuilderPool.Get(out var path);
-            data.GetParentPathAsSpan(path);
-            DoUpdateId(data, path, oldId.Span);
+            using var ctxScope = ContextBuilderPool.Get(out var ctx);
+            data.GetParentPathAsSpan(ctx.Path);
+            DoUpdateId(data, ctx, oldId.Span);
         }
 
         public void FreshUpdateIdSync<T>(T data, ReadOnlySpan<char> oldId) where T : ISavable
@@ -176,12 +246,12 @@ namespace Salvavida
             if (CheckNotDirty(data))
                 return;
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            data.GetParentPathAsSpan(path);
-            DoUpdateId(data, path, oldId);
+            using var locker = BeginFreshAction(out var ctx);
+            data.GetParentPathAsSpan(ctx.Path);
+            DoUpdateId(data, ctx, oldId);
         }
 
-        protected abstract void DoUpdateId<T>(T data, PathBuilder parentPath, ReadOnlySpan<char> oldId) where T : ISavable;
+        protected abstract void DoUpdateId<T>(T data, SerializeContext ctx, ReadOnlySpan<char> oldId) where T : ISavable;
 
         public void FreshUpdateOrderByPolicy(ISavable data, int order)
         {
@@ -198,10 +268,10 @@ namespace Salvavida
             if (CheckNotDirty(data))
                 return;
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            data.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            DoUpdateOrder(data, path, order);
+            using var locker = BeginFreshAction(out var ctx);
+            data.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            DoUpdateOrder(data, ctx, order);
         }
 
         public void FreshUpdateOrderAsync(ISavable data, int order, CancellationToken token)
@@ -210,25 +280,25 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var pathScope = PathBuilderPool.Get(out var path);
-            data.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => DoUpdateOrder(data, path, order), token));
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            data.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            AsyncIO.QueueJob(new AsyncVoidJob(ctxScope, x => DoUpdateOrder(data, x, order), token));
         }
 
-        public void UpdateOrder(ISavable data, PathBuilder path, int order)
+        public void UpdateOrder(ISavable data, SerializeContext ctx, int order)
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            path.Push(data.SvId!, PathBuilder.Type.Collection);
-            DoUpdateOrder(data, path, order);
-            path.Pop();
+            ctx.Path.Push(data.SvId!, PathBuilder.Type.Collection);
+            DoUpdateOrder(data, ctx, order);
+            ctx.Path.Pop();
         }
 
 
-        public abstract void DoUpdateOrder(ISavable data, PathBuilder path, int order);
+        public abstract void DoUpdateOrder(ISavable data, SerializeContext ctx, int order);
 
         public async void FreshSaveByPolicy<T>(T data) where T : ISavable
         {
@@ -247,10 +317,10 @@ namespace Salvavida
             if (CheckNotDirty(data))
                 return;
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            data.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            DoSaveObject(data, path);
+            using var locker = BeginFreshAction(out var ctx);
+            data.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            DoSaveObject(data, ctx);
         }
 
         public async Task FreshSaveAsync<T>(T data, CancellationToken token) where T : ISavable
@@ -259,10 +329,10 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var pathScope = PathBuilderPool.Get(out var path);
-            data.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            var job = new AsyncVoidJob(pathScope, () => DoSaveObject(data, path), token);
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            data.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            var job = new AsyncVoidJob(ctxScope, x => DoSaveObject(data, x), token);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -283,11 +353,11 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var pathScope = PathBuilderPool.Get(out var path);
-            parent.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            path.Push(propName.Span, type);
-            var job = new AsyncVoidJob(pathScope, () => DoSaveObject(data, path), default);
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName.Span, type);
+            var job = new AsyncVoidJob(ctxScope, x => DoSaveObject(data, x), default);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -298,33 +368,34 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            using var locker = BeginFreshAction(out var path);
-            parent.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            path.Push(propName, type);
-            DoSaveObject(data, path);
+            using var locker = BeginFreshAction(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName, type);
+            DoSaveObject(data, ctx);
         }
 
-        public void Save<T>(T savable, PathBuilder path, PathBuilder.Type type) where T : ISavable
+        public void Save<T>(T savable, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
                 throw new ArgumentNullException(nameof(savable));
             if (CheckNotDirty(savable))
                 return;
-            path.Push(savable.SvId!, type);
-            DoSaveObject(savable, path);
-            path.Pop();
+            ctx.Path.Push(savable.SvId!, type);
+            DoSaveObject(savable, ctx);
+            ctx.Path.Pop();
         }
 
-        public void SaveObject<T>(T obj, PathBuilder path, ReadOnlySpan<char> propName, PathBuilder.Type type)
+        public void SaveObject<T>(T obj, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
-            DoSaveObject(obj, path.Push(propName, type));
-            path.Pop();
+            ctx.Path.Push(propName, type);
+            DoSaveObject(obj, ctx);
+            ctx.Path.Pop();
         }
 
-        protected virtual void DoSaveObject<T>(T obj, PathBuilder path)
+        protected virtual void DoSaveObject<T>(T obj, SerializeContext ctx)
         {
             if (CheckNotDirty(obj))
                 return;
@@ -333,28 +404,28 @@ namespace Salvavida
                 sv = x;
             if (sv != null)
                 BeforeSerialize(sv);
-            DoSaveObjectImpl(obj, path);
+            DoSaveObjectImpl(obj, ctx);
             if (sv != null)
-                AfterSerialize(sv, path);
+                AfterSerialize(sv, ctx);
         }
 
-        protected abstract void DoSaveObjectImpl<T>(T obj, PathBuilder path);
+        protected abstract void DoSaveObjectImpl<T>(T obj, SerializeContext ctx);
 
-        public abstract void SaveList<T>(List<T?> list, PathBuilder path);
+        public abstract void SaveList<T>(List<T?> list, SerializeContext ctx);
 
-        public abstract void SaveArray<T>(T?[] arr, PathBuilder path);
+        public abstract void SaveArray<T>(T?[] arr, SerializeContext ctx);
 
-        public abstract void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?> dict, PathBuilder path);
+        public abstract void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?> dict, SerializeContext ctx);
 
         public T? FreshReadSync<T>(ReadOnlySpan<char> svid) where T : ISavable
         {
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            path.Push(svid, PathBuilder.Type.Property);
-            var result = DoRead<T>(path, out _);
-            path.Pop();
+            using var locker = BeginFreshAction(out var ctx);
+            ctx.Path.Push(svid, PathBuilder.Type.Property);
+            var result = DoRead<T>(ctx, out _);
+            ctx.Path.Pop();
             return result;
         }
 
@@ -362,63 +433,69 @@ namespace Salvavida
         {
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
-            var pathScope = PathBuilderPool.Get(out var path);
-            path.Push(svid.Span, PathBuilder.Type.Property);
-            var job = new AsyncValueJob<T?>(pathScope, () => DoRead<T>(path, out _), token);
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            ctx.Path.Push(svid.Span, PathBuilder.Type.Property);
+            var job = new AsyncValueJob<T?>(ctxScope, x => DoRead<T>(x, out _), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
 
-        public T? ReadObject<T>(PathBuilder path, ReadOnlySpan<char> propName, PathBuilder.Type type)
+        public T? ReadObject<T>(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
-            var result = DoRead<T>(path.Push(propName, type), out _);
-            path.Pop();
+            ctx.Path.Push(propName, type);
+            var result = DoRead<T>(ctx, out _);
+            ctx.Path.Pop();
             return result;
         }
 
-        protected virtual T? DoRead<T>(PathBuilder path) => DoRead<T>(path, out _);
+        protected virtual T? DoRead<T>(SerializeContext ctx) => DoRead<T>(ctx, out _);
 
-        protected virtual T? DoRead<T>(PathBuilder path, out int order)
+        protected virtual T? DoRead<T>(SerializeContext ctx, out int order)
         {
-            var result = DoReadImpl<T>(path, out order);
+            var result = DoReadImpl<T>(ctx, out order);
             if (result is ISavable sv)
             {
-                sv.SvId = path.GetSegmentString(^1);
-                AfterDeserialize(sv, path);
+                sv.SvId = ctx.Path.GetSegmentString(^1);
+                AfterDeserialize(sv, ctx);
                 if (result is ISaveWithOrder swo)
                     swo.SvOrder = order;
             }
             return result;
         }
 
-        protected abstract T? DoReadImpl<T>(PathBuilder path, out int order);
+        protected abstract T? DoReadImpl<T>(SerializeContext ctx, out int order);
 
-        public T?[]? ReadArray<T>(PathBuilder path, ReadOnlySpan<char> propName, bool saveSeparately)
+        public T?[]? ReadArray<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately)
         {
-            var result = DoReadArray<T>(path.Push(propName, PathBuilder.Type.Property), saveSeparately);
+            ctx.Path.Push(propName, PathBuilder.Type.Property);
+            var result = DoReadArray<T>(ctx, saveSeparately);
+            ctx.Path.Pop();
+            return result;
+        }
+
+        protected abstract T?[]? DoReadArray<T>(SerializeContext ctx, bool saveSeparately);
+
+        public List<T?>? ReadList<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately)
+        {
+            var path = ctx.Path;
+            path.Push(propName, PathBuilder.Type.Property);
+            var result = DoReadList<T>(ctx, saveSeparately);
             path.Pop();
             return result;
         }
 
-        protected abstract T?[]? DoReadArray<T>(PathBuilder path, bool saveSeparately);
+        protected abstract List<T?>? DoReadList<T>(SerializeContext ctx, bool saveSeparately);
 
-        public List<T?>? ReadList<T>(PathBuilder path, ReadOnlySpan<char> propName, bool saveSeparately)
+        public Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately)
         {
-            var result = DoReadList<T>(path.Push(propName, PathBuilder.Type.Property), saveSeparately);
+            var path = ctx.Path;
+            path.Push(propName, PathBuilder.Type.Property);
+            var result = DoReadDict<TKey, TValue>(ctx, saveSeparately);
             path.Pop();
             return result;
         }
 
-        protected abstract List<T?>? DoReadList<T>(PathBuilder path, bool saveSeparately);
-
-        public Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(PathBuilder path, ReadOnlySpan<char> propName, bool saveSeparately)
-        {
-            var result = DoReadDict<TKey, TValue>(path.Push(propName, PathBuilder.Type.Property), saveSeparately);
-            path.Pop();
-            return result;
-        }
-
-        protected abstract Dictionary<TKey, TValue?>? DoReadDict<TKey, TValue>(PathBuilder path, bool saveSeparately);
+        protected abstract Dictionary<TKey, TValue?>? DoReadDict<TKey, TValue>(SerializeContext ctx, bool saveSeparately);
 
         public void FreshDeleteByPolicy<T>(T data) where T : ISavable
         {
@@ -433,41 +510,43 @@ namespace Salvavida
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            data.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            DoDelete(path);
+            using var locker = BeginFreshAction(out var ctx);
+            data.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            DoDelete(ctx);
         }
 
         public void FreshDeleteAsync<T>(T data, CancellationToken token) where T : ISavable
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            var pathScope = PathBuilderPool.Get(out var path);
-            data.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => DoDelete(path), token));
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            data.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            AsyncIO.QueueJob(new AsyncVoidJob(ctxScope, x => DoDelete(x), token));
         }
 
-        public void Delete<T>(T data, PathBuilder path, PathBuilder.Type type) where T : ISavable
+        public void Delete<T>(T data, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
+            var path = ctx.Path;
             path.Push(data.SvId!, type);
-            DoDelete(path);
+            DoDelete(ctx);
             path.Pop();
         }
 
-        public void DeleteObject(PathBuilder path, ReadOnlySpan<char> propName, PathBuilder.Type type)
+        public void DeleteObject(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
+            var path = ctx.Path;
             path.Push(propName, type);
-            DoDelete(path);
+            DoDelete(ctx);
             path.Pop();
         }
 
-        protected abstract void DoDelete(PathBuilder path);
+        protected abstract void DoDelete(SerializeContext ctx);
 
         public void FreshDeleteAllByPolicy<T>(T savable) where T : ISavable
         {
@@ -482,52 +561,57 @@ namespace Salvavida
             if (savable == null)
                 throw new ArgumentNullException(nameof(savable));
             AsyncIO.ForceComplete();
-            using var locker = BeginFreshAction(out var path);
-            savable.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            DeleteAll(path);
+            using var locker = BeginFreshAction(out var ctx);
+            savable.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            DeleteAll(ctx);
         }
 
         public void FreshDeleteAllAsync<T>(T savable, CancellationToken token) where T : ISavable
         {
             if (savable == null)
                 throw new ArgumentNullException(nameof(savable));
-            var pathScope = PathBuilderPool.Get(out var path);
-            savable.GetSavePathAsSpan(path);
-            ThrowIfPathIsEmpty(path);
-            DeleteAll(path);
-            AsyncIO.QueueJob(new AsyncVoidJob(pathScope, () => DeleteAll(path), token));
+            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            savable.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            DeleteAll(ctx);
+            AsyncIO.QueueJob(new AsyncVoidJob(ctxScope, x => DeleteAll(x), token));
         }
 
-        public void DeleteAll<T>(T savable, PathBuilder path, PathBuilder.Type type) where T : ISavable
+        public void DeleteAll<T>(T savable, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
                 throw new ArgumentNullException(nameof(savable));
-            DeleteAll(path.Push(savable.SvId!, type));
+            var path = ctx.Path;
+            path.Push(savable.SvId!, type);
+            DeleteAll(ctx);
             path.Pop();
         }
 
-        public void DeleteAll(PathBuilder path, ReadOnlySpan<char> propName, PathBuilder.Type type)
+        public void DeleteAll(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
-            DeleteAll(path.Push(propName, type));
+            var path = ctx.Path;
+            path.Push(propName, type);
+            DeleteAll(ctx);
             path.Pop();
         }
 
-        public abstract void DeleteAll(PathBuilder path);
+        public abstract void DeleteAll(SerializeContext ctx);
 
         protected virtual void BeforeSerialize(ISavable savable)
         {
             savable.BeforeSerialize(this);
         }
-        protected virtual void AfterSerialize(ISavable savable, PathBuilder path)
+        protected virtual void AfterSerialize(ISavable savable, SerializeContext ctx)
         {
-            savable.AfterSerialize(this, path);
+            savable.AfterSerialize(this, ctx);
             savable.SetDirty(false, false);
         }
-        protected virtual void AfterDeserialize(ISavable savable, PathBuilder path)
+        protected virtual void AfterDeserialize(ISavable savable, SerializeContext ctx)
         {
+            var path = ctx.Path;
             savable.SvId ??= path.GetSegmentString(^1);
-            savable.AfterDeserialize(this, path);
+            savable.AfterDeserialize(this, ctx);
             savable.SetDirty(false, false);
         }
 

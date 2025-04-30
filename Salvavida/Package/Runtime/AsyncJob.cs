@@ -6,9 +6,9 @@ namespace Salvavida
 {
     public abstract class AsyncJob : INotifyCompletion
     {
-        protected AsyncJob(IObjectPool<PathBuilder>.UsingScope pathScope, CancellationToken token)
+        protected AsyncJob(IObjectPool<SerializeContext>.UsingScope ctxScope, CancellationToken token)
         {
-            _pathScope = pathScope;
+            _ctxScope = ctxScope;
             _token = token;
         }
 
@@ -18,12 +18,13 @@ namespace Salvavida
         private int _jobFinished;
         private int _completed;
         private AsyncJob? _joinedJob;
-        private IObjectPool<PathBuilder>.UsingScope _pathScope;
+        private IObjectPool<SerializeContext>.UsingScope _ctxScope;
 
         public bool IsCompleted => _completed > 0;
         public bool JobFinished => _jobFinished > 0;
 
-        public PathBuilder? PathBuilder => _pathScope.Value;
+        public SerializeContext? Context => _ctxScope.Value;
+        //public PathBuilder? PathBuilder => _pathScope.Value;
 
         public void RunJob()
         {
@@ -50,7 +51,7 @@ namespace Salvavida
                 JoinedJobOnComplete(_joinedJob);
                 _joinedJob.SetComplete();
             }
-            _pathScope.Dispose();
+            _ctxScope.Dispose();
         }
 
         public void OnCompleted(Action continuation)
@@ -74,19 +75,19 @@ namespace Salvavida
 
     public class AsyncVoidJob : AsyncJob
     {
-        public AsyncVoidJob(IObjectPool<PathBuilder>.UsingScope pathScope, Action action, CancellationToken token)
-            : base(pathScope, token)
+        public AsyncVoidJob(IObjectPool<SerializeContext>.UsingScope ctxScope, Action<SerializeContext> action, CancellationToken token)
+            : base(ctxScope, token)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
         }
 
-        private Action? _action;
+        private Action<SerializeContext>? _action;
 
         protected override void DoRunJob()
         {
             if (_token.IsCancellationRequested)
                 return;
-            Interlocked.Exchange(ref _action, null)?.Invoke();
+            Interlocked.Exchange(ref _action, null)?.Invoke(Context);
         }
 
         public void GetResult()
@@ -110,13 +111,13 @@ namespace Salvavida
 
     public class AsyncValueJob<T> : AsyncJob
     {
-        public AsyncValueJob(IObjectPool<PathBuilder>.UsingScope pathScope, Func<T> valueGetter, CancellationToken token)
-            : base(pathScope, token)
+        public AsyncValueJob(IObjectPool<SerializeContext>.UsingScope ctxScope, Func<SerializeContext, T> valueGetter, CancellationToken token)
+            : base(ctxScope, token)
         {
             _valueGetter = valueGetter ?? throw new ArgumentNullException(nameof(valueGetter));
         }
 
-        private Func<T>? _valueGetter;
+        private Func<SerializeContext, T>? _valueGetter;
 
         public T? Result { get; private set; }
 
@@ -125,7 +126,7 @@ namespace Salvavida
             var action = Interlocked.Exchange(ref _valueGetter, null);
             if (action == null)
                 return;
-            Result = action.Invoke();
+            Result = action.Invoke(Context);
         }
 
         public T? GetResult()

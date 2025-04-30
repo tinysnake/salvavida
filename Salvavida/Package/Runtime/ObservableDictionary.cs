@@ -115,80 +115,80 @@ namespace Salvavida
         }
 
 
-        protected override void TrySaveItems(Serializer serializer, PathBuilder? pathBuilder, CollectionChangeInfo<TValue?> e)
+        protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
         {
             switch (e.Action)
             {
                 case CollectionChangedAction.Add:
                 case CollectionChangedAction.Replace:
                     if (e.IsSingleItem)
-                        KeyCollectionSave(serializer, pathBuilder, e.NewItem!, isRemove: false);
+                        KeyCollectionSave(serializer, ctx, e.NewItem!, isRemove: false);
                     else
-                        KeyCollectionSave(serializer, pathBuilder, e.NewItems!, isRemove: false);
+                        KeyCollectionSave(serializer, ctx, e.NewItems!, isRemove: false);
                     break;
                 case CollectionChangedAction.Remove:
                     if (e.IsSingleItem)
-                        KeyCollectionSave(serializer, pathBuilder, e.OldItem!, isRemove: true);
+                        KeyCollectionSave(serializer, ctx, e.OldItem!, isRemove: true);
                     else
-                        KeyCollectionSave(serializer, pathBuilder, e.OldItems!, isRemove: true);
+                        KeyCollectionSave(serializer, ctx, e.OldItems!, isRemove: true);
                     break;
                 case CollectionChangedAction.Reset:
-                    ClearCollection(serializer, pathBuilder);
+                    ClearCollection(serializer, ctx);
                     break;
                 default:
                     throw new NotSupportedException();
             }
         }
-        private void KeyCollectionSave(Serializer serializer, PathBuilder? pathBuilder, TValue value, bool isRemove)
+        private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, TValue value, bool isRemove)
         {
             if (value is not ISavable sv)
                 throw new ArgumentException("values have to be implementations of ISavable");
             if (isRemove)
             {
-                if (pathBuilder == null)
+                if (ctx == null)
                     serializer.FreshDeleteByPolicy(sv);
                 else
-                    serializer.Delete(sv, pathBuilder, PathBuilder.Type.Collection);
+                    serializer.Delete(sv, ctx, PathBuilder.Type.Collection);
             }
             else
             {
-                if (pathBuilder == null)
+                if (ctx == null)
                     serializer.FreshSaveByPolicy(sv);
                 else
-                    serializer.Save(sv, pathBuilder, PathBuilder.Type.Collection);
+                    serializer.Save(sv, ctx, PathBuilder.Type.Collection);
             }
         }
-        private void KeyCollectionSave(Serializer serializer, PathBuilder? pathBuilder, IList<TValue?> values, bool isRemove)
+        private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, IList<TValue?> values, bool isRemove)
         {
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
-            if (pathBuilder == null)
-                serializer.FreshActionByPolicy(this, path => KeyCollectionSaveAction(serializer, path, values, isRemove));
+            if (ctx == null)
+                serializer.FreshActionByPolicy(this, x => KeyCollectionSaveAction(serializer, x, values, isRemove));
             else
-                KeyCollectionSaveAction(serializer, pathBuilder, values, isRemove);
+                KeyCollectionSaveAction(serializer, ctx, values, isRemove);
         }
 
-        private void KeyCollectionSaveAction(Serializer serializer, PathBuilder pathBuilder, IList<TValue?> values, bool isRemove)
+        private void KeyCollectionSaveAction(Serializer serializer, SerializeContext ctx, IList<TValue?> values, bool isRemove)
         {
             for (var i = 0; i < values.Count; i++)
             {
                 if (values[i] is not ISavable value)
                     throw new ArgumentException("values have to be implementations of ISavable");
                 if (isRemove)
-                    serializer.Delete(value, pathBuilder, PathBuilder.Type.Collection);
+                    serializer.Delete(value, ctx, PathBuilder.Type.Collection);
                 else
-                    serializer.Save(value, pathBuilder, PathBuilder.Type.Collection);
+                    serializer.Save(value, ctx, PathBuilder.Type.Collection);
             }
         }
 
-        protected override void TrySaveSource(Serializer serializer, PathBuilder? pathBuilder)
+        protected override void TrySaveSource(Serializer serializer, SerializeContext? ctx)
         {
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
-            if (pathBuilder == null)
+            if (ctx == null)
                 serializer.FreshActionByPolicy(this, path => serializer.SaveDict(_dict, path));
             else
-                serializer.SaveDict(_dict, pathBuilder);
+                serializer.SaveDict(_dict, ctx);
         }
 
         public void Add(TKey key, TValue? value)
