@@ -101,7 +101,7 @@ namespace Salvavida
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
             if (ctx == null)
-                serializer.FreshActionByPolicy(this, path => serializer.SaveArray(_arr, path));
+                serializer.FreshActionByPolicy(this, path => serializer.SaveArray(_arr, path), null);
             else
                 serializer.SaveArray(_arr, ctx);
         }

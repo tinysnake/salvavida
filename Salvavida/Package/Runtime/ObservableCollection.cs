@@ -212,7 +212,7 @@ namespace Salvavida
                 serializer.FreshActionByPolicy(this, pathBuilder =>
                 {
                     CollectionSaveAction(serializer, pathBuilder, oldItems, newItems, startingIndex);
-                });
+                }, null);
             }
             else
                 CollectionSaveAction(serializer, ctx, oldItems, newItems, startingIndex);
@@ -275,7 +275,7 @@ namespace Salvavida
                 serializer.FreshActionByPolicy(this, path =>
                 {
                     CollectionUpdateOrderAction(serializer, path, items);
-                });
+                }, null);
             }
             else
             {

@@ -163,7 +163,7 @@ namespace Salvavida
             if (values == null)
                 throw new ArgumentNullException(nameof(values));
             if (ctx == null)
-                serializer.FreshActionByPolicy(this, x => KeyCollectionSaveAction(serializer, x, values, isRemove));
+                serializer.FreshActionByPolicy(this, x => KeyCollectionSaveAction(serializer, x, values, isRemove), null);
             else
                 KeyCollectionSaveAction(serializer, ctx, values, isRemove);
         }
@@ -186,7 +186,7 @@ namespace Salvavida
             if (string.IsNullOrEmpty(SvId))
                 throw new NullReferenceException(nameof(SvId));
             if (ctx == null)
-                serializer.FreshActionByPolicy(this, path => serializer.SaveDict(_dict, path));
+                serializer.FreshActionByPolicy(this, path => serializer.SaveDict(_dict, path), null);
             else
                 serializer.SaveDict(_dict, ctx);
         }

@@ -118,7 +118,7 @@ namespace Salvavida
             var serializer = GetSerializer(savable);
             if (serializer == null)
                 return;
-            serializer.FreshUpdateIdByPolicy(savable, oldId);
+            serializer.FreshUpdateIdByPolicy(savable, oldId.AsMemory());
         }
 
         public static void TryUpdateOrder<T>(this T savable, int order) where T : ISavable
