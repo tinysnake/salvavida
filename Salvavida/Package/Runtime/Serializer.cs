@@ -20,7 +20,7 @@ namespace Salvavida
             public FreshActionLocker(Serializer serializer)
             {
                 _serializer = serializer;
-                _context = serializer.GetContext(true);
+                _context = serializer.GetSyncContext();
             }
 
             private readonly Serializer _serializer;
@@ -30,7 +30,7 @@ namespace Salvavida
 
             public void Dispose()
             {
-                _serializer.ReturnContext(_context);
+                _serializer.ContextBuilderPool.Return(_context);
                 Interlocked.CompareExchange(ref _serializer._pathBuilderLocker, 0, 1);
             }
         }
@@ -41,7 +41,7 @@ namespace Salvavida
 
         protected Serializer()
         {
-            ContextBuilderPool = new DefaultObjectPool<SerializeContext>(CreateContext, null, 10);
+            ContextBuilderPool = new DefaultObjectPool<SerializeContext>(CreateContext, ReturnContext, 10);
             PathBuilderPool = new DefaultObjectPool<PathBuilder>(() => new PathBuilder(), x => x.Clear(), 10);
         }
 
@@ -73,23 +73,25 @@ namespace Salvavida
 
         protected virtual SerializeContext CreateContext() => new();
 
-        protected virtual SerializeContext GetContext(bool withUniqueLock)
+        protected virtual IObjectPool<SerializeContext>.UsingScope GetContextScope(out SerializeContext ctx)
         {
+            var ctxScope = ContextBuilderPool.Get(out ctx);
+            ctx.Path = PathBuilderPool.Get();
+            OnGetContext(ctx, false);
+            return ctxScope;
+        }
+
+        protected virtual SerializeContext GetSyncContext()
+        {
+            AsyncIO.ForceComplete();
             var ctx = ContextBuilderPool.Get();
-            ctx.UniqueLocked = withUniqueLock;
-            if (withUniqueLock)
-            {
-                var originValue = Interlocked.CompareExchange(ref _pathBuilderLocker, 1, 0);
-                if (originValue > 0)
-                    throw new InvalidOperationException("path builder is already in use!");
-                _lockedPathBuilder.Clear();
-                ctx.Path = _lockedPathBuilder;
-            }
-            else
-            {
-                ctx.Path = PathBuilderPool.Get();
-            }
-            OnGetContext(ctx, withUniqueLock);
+            ctx.UniqueLocked = true;
+            var originValue = Interlocked.CompareExchange(ref _pathBuilderLocker, 1, 0);
+            if (originValue > 0)
+                throw new InvalidOperationException("path builder is already in use!");
+            _lockedPathBuilder.Clear();
+            ctx.Path = _lockedPathBuilder;
+            OnGetContext(ctx, true);
             return ctx;
         }
 
@@ -110,7 +112,6 @@ namespace Salvavida
             }
             ctx.Path = null;
             OnReturnContext(ctx);
-            ContextBuilderPool.Return(ctx);
         }
 
         protected virtual void OnReturnContext(SerializeContext ctx)
@@ -149,7 +150,7 @@ namespace Salvavida
 
         public void FreshActionAsync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
         {
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             AsyncIO.QueueJob(new AsyncVoidJob(ctxScope, x =>
@@ -172,7 +173,6 @@ namespace Salvavida
 
         public void FreshActionSync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
         {
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -209,7 +209,7 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
             var job = new AsyncValueJob<bool>(ctxScope, x => Has(x), token);
             AsyncIO.QueueJob(job);
@@ -262,8 +262,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            AsyncIO.ForceComplete();
-            using var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
             var job = new AsyncVoidJob(ctxScope, x =>
             {
@@ -286,7 +285,6 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
             try
@@ -320,7 +318,6 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -340,7 +337,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             var job = new AsyncVoidJob(ctxScope, x =>
@@ -402,7 +399,6 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -415,7 +411,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             var job = new AsyncVoidJob(ctxScope, x => DoSaveObject(data, x), token);
@@ -439,7 +435,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             if (CheckNotDirty(data))
                 return;
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             ctx.Path.Push(propName.Span, type);
@@ -531,7 +527,6 @@ namespace Salvavida
         {
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             ctx.Path.Push(svid, PathBuilder.Type.Property);
             var result = DoRead<T>(ctx, out _);
@@ -543,7 +538,7 @@ namespace Salvavida
         {
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             ctx.Path.Push(svid.Span, PathBuilder.Type.Property);
             var job = new AsyncValueJob<T?>(ctxScope, x => DoRead<T>(x, out _), token);
             AsyncIO.QueueJob(job);
@@ -619,7 +614,6 @@ namespace Salvavida
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -637,7 +631,7 @@ namespace Salvavida
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             var job = new AsyncVoidJob(ctxScope, x =>
@@ -714,7 +708,6 @@ namespace Salvavida
         {
             if (savable == null)
                 throw new ArgumentNullException(nameof(savable));
-            AsyncIO.ForceComplete();
             using var locker = BeginFreshAction(out var ctx);
             savable.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -725,7 +718,7 @@ namespace Salvavida
         {
             if (savable == null)
                 throw new ArgumentNullException(nameof(savable));
-            var ctxScope = ContextBuilderPool.Get(out var ctx);
+            var ctxScope = GetContextScope(out var ctx);
             savable.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             DeleteAll(ctx);
