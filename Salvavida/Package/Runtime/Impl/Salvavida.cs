@@ -59,7 +59,16 @@ namespace Salvavida.DefaultImpl
         {
         }
 
+        protected Action _onDataLoaded;
+        protected Func<Task> _onDataLoadedAsync;
+
         public TData? Data { get; private set; }
+
+        public void SetDataLoadedCallbacks(Action onDataLoaded, Func<Task> onDataLoadedAsync)
+        {
+            _onDataLoaded = onDataLoaded;
+            _onDataLoadedAsync = onDataLoadedAsync;
+        }
 
         public override void Load()
         {
@@ -75,6 +84,7 @@ namespace Salvavida.DefaultImpl
             }
             data.SetSerializer(Serializer);
             Data = data;
+            _onDataLoaded?.Invoke();
             if (needsSave)
                 Save();
         }
@@ -93,6 +103,15 @@ namespace Salvavida.DefaultImpl
             }
             data.SetSerializer(Serializer);
             Data = data;
+#if USE_UNITASK && !SV_FORCE_TASK
+            var t = _onDataLoadedAsync != null ? _onDataLoadedAsync.Invoke() : default;
+#else
+            var t = _onDataLoadedAsync?.Invoke();
+            if(t!=null)
+#endif
+            {
+                await t;
+            }
             if (needsSave)
                 await SaveAsync(token);
         }
