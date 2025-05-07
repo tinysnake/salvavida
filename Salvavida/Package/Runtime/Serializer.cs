@@ -38,11 +38,13 @@ namespace Salvavida
         private readonly PathBuilder _lockedPathBuilder = new();
         private int _pathBuilderLocker = 0;
         protected IIdGenerator? _idGen;
+        protected Random _random;
 
         protected Serializer()
         {
             ContextBuilderPool = new DefaultObjectPool<SerializeContext>(CreateContext, ReturnContext, 10);
             PathBuilderPool = new DefaultObjectPool<PathBuilder>(() => new PathBuilder(), x => x.Clear(), 10);
+            _random = new((int)DateTimeOffset.UtcNow.Ticks);
         }
 
         public IObjectPool<SerializeContext> ContextBuilderPool { get; set; }
@@ -76,6 +78,7 @@ namespace Salvavida
         protected virtual IObjectPool<SerializeContext>.UsingScope GetContextScope(out SerializeContext ctx)
         {
             var ctxScope = ContextBuilderPool.Get(out ctx);
+            ctx.GetFromPool();
             ctx.Path = PathBuilderPool.Get();
             OnGetContext(ctx, false);
             return ctxScope;
@@ -85,6 +88,7 @@ namespace Salvavida
         {
             AsyncIO.ForceComplete();
             var ctx = ContextBuilderPool.Get();
+            ctx.GetFromPool();
             ctx.UniqueLocked = true;
             var originValue = Interlocked.CompareExchange(ref _pathBuilderLocker, 1, 0);
             if (originValue > 0)
@@ -101,6 +105,7 @@ namespace Salvavida
 
         protected virtual void ReturnContext(SerializeContext ctx)
         {
+            ctx.ReturnToPool();
             var path = ctx.Path;
             if (ctx.UniqueLocked)
             {

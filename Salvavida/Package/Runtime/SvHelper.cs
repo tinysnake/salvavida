@@ -7,6 +7,7 @@ namespace Salvavida
     {
         internal static Type typeOfSavableInterface = typeof(ISavable);
         internal static Type typeOfSaveOrderInterface = typeof(ISaveWithOrder);
+        internal static Random randomizer = new();
         private static Stack<(string, PathBuilder.Type)> _tempPathBuilder = new();
 
         public static bool CheckIsSavable<T>()
