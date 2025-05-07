@@ -153,7 +153,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            AsyncIO.QueueJob(new AsyncVoidJob(ctxScope, x =>
+            AsyncIO.QueueJob(new AsyncVoidJob<SerializeContext>(ctxScope, x =>
             {
                 try
                 {
@@ -211,7 +211,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
-            var job = new AsyncValueJob<bool>(ctxScope, x => Has(x), token);
+            var job = new AsyncValueJob<SerializeContext, bool>(ctxScope, x => Has(x), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
@@ -264,7 +264,7 @@ namespace Salvavida
                 return;
             var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
-            var job = new AsyncVoidJob(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x =>
             {
                 try
                 {
@@ -340,7 +340,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            var job = new AsyncVoidJob(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x =>
             {
                 try
                 {
@@ -414,7 +414,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            var job = new AsyncVoidJob(ctxScope, x => DoSaveObject(data, x), token);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x => DoSaveObject(data, x), token);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -439,7 +439,7 @@ namespace Salvavida
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             ctx.Path.Push(propName.Span, type);
-            var job = new AsyncVoidJob(ctxScope, x => DoSaveObject(data, x), default);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x => DoSaveObject(data, x), default);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -540,7 +540,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(svid));
             var ctxScope = GetContextScope(out var ctx);
             ctx.Path.Push(svid.Span, PathBuilder.Type.Property);
-            var job = new AsyncValueJob<T?>(ctxScope, x => DoRead<T>(x, out _), token);
+            var job = new AsyncValueJob<SerializeContext, T?>(ctxScope, x => DoRead<T>(x, out _), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
@@ -634,7 +634,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            var job = new AsyncVoidJob(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x =>
             {
                 try
                 {
@@ -722,7 +722,7 @@ namespace Salvavida
             savable.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             DeleteAll(ctx);
-            var job = new AsyncVoidJob(ctxScope, x => DeleteAll(x), token);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x => DeleteAll(x), token);
             AsyncIO.QueueJob(job);
             await job;
         }

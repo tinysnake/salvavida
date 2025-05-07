@@ -17,14 +17,14 @@ namespace Salvavida
 
         public void QueueJob(AsyncJob job)
         {
-            var hashCode = job.Context!.GetHashCode();
-            if (_jobs.TryGetValue(hashCode, out var j))
+            var signature = job.GetJoinableSignature();
+            if (_jobs.TryGetValue(signature, out var j))
             {
                 job.JoinJob(j);
-                _jobs.TryUpdate(hashCode, job, j);
+                _jobs.TryUpdate(signature, job, j);
             }
             else
-                _jobs.TryAdd(hashCode, job);
+                _jobs.TryAdd(signature, job);
 
             AfterQueueJob();
         }
