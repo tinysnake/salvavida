@@ -9,7 +9,7 @@ using Task = System.Threading.Tasks.Task;
 
 namespace Salvavida.DefaultImpl
 {
-    public abstract class Salvavida : ISalvavida
+    public abstract class Salvavida : ISalvavida, IDisposable
     {
         public Salvavida(string id, Serializer serializer)
         {
@@ -28,8 +28,11 @@ namespace Salvavida.DefaultImpl
 
         public void Dispose()
         {
+            OnDispose();
             Serializer.Dispose();
         }
+
+        protected virtual void OnDispose() { }
 
         public abstract void Load();
 
