@@ -624,7 +624,7 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"serializer.TrySaveObject({fieldName}, ctx, \"{prop}\");");
+                        sb.WriteLine($"serializer.SaveObject({fieldName}, ctx, \"{prop}\", PathBuilder.Type.Property);");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
@@ -644,7 +644,7 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\");");
+                        sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\", PathBuilder.Type.Property);");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
