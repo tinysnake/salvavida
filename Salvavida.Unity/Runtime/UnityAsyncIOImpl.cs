@@ -88,5 +88,11 @@ namespace Salvavida.Unity
             foreach (var asyncIO in _asyncIOList)
                 asyncIO.ForceComplete();
         }
+
+        private void OnApplicationQuit()
+        {
+            foreach (var asyncIO in _asyncIOList)
+                asyncIO.ForceComplete();
+        }
     }
 }

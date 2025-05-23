@@ -50,6 +50,7 @@ namespace Salvavida
         public IObjectPool<SerializeContext> ContextBuilderPool { get; set; }
         public IObjectPool<PathBuilder> PathBuilderPool { get; set; }
         public SavePolicy SavePolicy { get; set; } = SavePolicy.Sync;
+        public bool DisableDirtyCheck { get; set; }
         public virtual IIdGenerator IdGenerator
         {
             get
@@ -132,6 +133,8 @@ namespace Salvavida
 
         protected virtual bool CheckNotDirty<T>(T value)
         {
+            if (DisableDirtyCheck)
+                return false;
             if (value is ISavable sv)
                 return !sv.IsDirty;
             return false;
