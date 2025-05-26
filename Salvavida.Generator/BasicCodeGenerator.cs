@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Linq;
 using System.Collections.Immutable;
+using System.Collections.Generic;
 
 namespace Salvavida.Generator
 {
@@ -624,7 +625,7 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"serializer.SaveObject({fieldName}, ctx, \"{prop}\", PathBuilder.Type.Property);");
+                        sb.WriteLine($"this.TrySaveProperty(\"{prop}\", {fieldName}, true);");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {

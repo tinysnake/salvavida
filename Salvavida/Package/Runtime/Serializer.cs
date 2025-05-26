@@ -499,8 +499,22 @@ namespace Salvavida
 
         protected virtual void DoSaveObject<T>(T obj, SerializeContext ctx)
         {
+            if (obj == null)
+            {
+                try
+                {
+                    DoDelete(ctx);
+                }
+                catch (Exception ex)
+                {
+                    OnDeleteFailed(ctx, ex);
+                }
+                return;
+            }
+
             if (CheckNotDirty(obj))
                 return;
+
             try
             {
                 ISavable? sv = null;

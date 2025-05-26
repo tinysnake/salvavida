@@ -79,22 +79,17 @@ namespace Salvavida
             return null;
         }
 
-        public static void TrySave<TParent, T>(this TParent savable, string propName, T value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
+        public static void TrySaveProperty<TParent, T>(this TParent savable, string propName, T value, bool isSeperated) where TParent : ISavable
         {
             if (savable == null)
                 return;
             if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
                 return;
 
-            if (separatedCollections != null && Array.IndexOf(separatedCollections, propName) >= 0)
+            Serializer? serializer = null;
+            if (isSeperated)
             {
-                // collections will not call this method
-                return;
-            }
-
-            if (separatedProperties != null && Array.IndexOf(separatedProperties, propName) >= 0)
-            {
-                var serializer = GetSerializer(savable);
+                serializer = GetSerializer(savable);
                 if (serializer == null)
                     return;
                 if (value is ISavable sv)
@@ -109,7 +104,43 @@ namespace Salvavida
             if (parent != null)
                 return;
 
-            GetSerializer(savable)?.FreshSaveByPolicy(savable);
+            serializer ??= GetSerializer(savable);
+            serializer?.FreshSaveByPolicy(savable);
+        }
+
+        public static void TrySave<TParent, T>(this TParent savable, string propName, T value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
+        {
+            if (savable == null)
+                return;
+            if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
+                return;
+
+            if (separatedCollections != null && Array.IndexOf(separatedCollections, propName) >= 0)
+            {
+                // collections will not call this method
+                return;
+            }
+
+            Serializer? serializer = null;
+            if (separatedProperties != null && Array.IndexOf(separatedProperties, propName) >= 0)
+            {
+                serializer = GetSerializer(savable);
+                if (serializer == null)
+                    return;
+                if (value is ISavable sv)
+                    serializer.FreshSaveByPolicy(sv);
+                else
+                    serializer.FreshSaveByPolicy(savable, propName.AsMemory(), value, PathBuilder.Type.Property);
+                return;
+            }
+
+            // if savable's parent is not null, then the save action will perform by it's parent, not it self.
+            var parent = savable.SvParent;
+            if (parent != null)
+                return;
+
+            serializer ??= GetSerializer(savable);
+            serializer?.FreshSaveByPolicy(savable);
         }
 
         public static void TryUpdateId<T>(this T savable, string oldId) where T : ISavable
