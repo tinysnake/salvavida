@@ -274,23 +274,26 @@ namespace Salvavida.Generator
 
                 var collectionType = CodeGenHelper.GetCollectionType(ctx, type, ref typeSymbol, out var elemTypeSymbols);
                 var saveSeparately = saveSeparatelyAttr != null;
+                _infoStore!.nameMappings[fieldName] = propertyName;
                 if (collectionType == CollectionType.None)
                 {
-                    _infoStore!.nameMappings.Add((fieldName, propertyName));
                     _infoStore.propTypeMappings[fieldName] = typeSymbol;
                     if (saveSeparately)
+                    {
                         _infoStore!.separatedProperties.Add(propertyName);
+                        _infoStore!.internalSeparatedMembers.Add(fieldName);
+                    }
                     WriteProperty(sb, ctx, propertyName, fieldName, typeSymbol, saveSeparately);
                 }
                 else
                 {
-                    _infoStore!.nameMappings.Add((fieldName, propertyName));
                     _infoStore!.collectionParameterMappings[fieldName] = (collectionType, elemTypeSymbols!);
                     if (saveSeparately)
                     {
                         //var savableElement = CodeGenHelper.TryGetAttribute(ctx, , SalvavidaGenerator.SALVAVIDA_ATTRIBUTE)
                         // TODO: to check if elemTypeSymbols.Last() implemented ISavable or not
                         _infoStore!.separatedCollections.Add(propertyName, false);
+                        _infoStore!.internalSeparatedMembers.Add(fieldName);
                     }
                     var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols!);
                     WriteCollectionProperty(sb, ctx, propertyName, fieldName,
@@ -308,31 +311,7 @@ namespace Salvavida.Generator
         {
             if (!_infoStore!.savableTypes.TryGetValue(typeSymbol, out var result))
             {
-                if (typeSymbol.SpecialType == SpecialType.None)
-                {
-                    var t = typeSymbol;
-                    while (t != null)
-                    {
-                        if (t.Name == "ISavable" && t.ContainingNamespace?.Name == "Salvavida")
-                        {
-                            result = true;
-                            break;
-                        }
-                        bool hasResult = false;
-                        foreach (var attr in t.GetAttributes())
-                        {
-                            if (attr?.AttributeClass?.ToDisplayString() == "Salvavida.SavableAttribute")
-                            {
-                                result = true;
-                                hasResult = true;
-                                break;
-                            }
-                        }
-                        if (hasResult)
-                            break;
-                        t = t.BaseType;
-                    }
-                }
+                result = CodeGenHelper.GetIsSavable(typeSymbol);
                 _infoStore!.savableTypes[typeSymbol] = result;
             }
             return result;
@@ -632,6 +611,12 @@ namespace Salvavida.Generator
                         sb.WriteLine($"{kvp.Key}?.TrySave(serializer, ctx);");
                     }
                 }
+                foreach (var kvp in _infoStore!.propTypeMappings)
+                {
+                    if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
+                        continue;
+                    sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterSerialize(serializer, ctx);");
+                }
                 sb.WriteLine("OnAfterSerialize(serializer, ctx);");
             }
             sb.WriteLine("partial void OnAfterSerialize(Serializer serializer, SerializeContext ctx);");
@@ -668,6 +653,12 @@ namespace Salvavida.Generator
                         sb.WriteLine($"({kvp.Key} as ISavable).SetDirty(false, false);");
                     }
                 }
+                foreach (var kvp in _infoStore!.propTypeMappings)
+                {
+                    if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
+                        continue;
+                    sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterDeserialize(serializer, ctx, \"{_infoStore!.nameMappings[kvp.Key]}\");");
+                }
                 sb.WriteLine("OnAfterDeserialize(serializer, ctx);");
             }
             sb.WriteLine("partial void OnAfterDeserialize(Serializer serializer, SerializeContext ctx);");
@@ -681,10 +672,10 @@ namespace Salvavida.Generator
 
         private string GetOriginName(string generatedName)
         {
-            foreach (var (fieldName, propName) in _infoStore!.nameMappings)
+            foreach (var kvp in _infoStore!.nameMappings)
             {
-                if (propName == generatedName)
-                    return fieldName;
+                if (kvp.Value == generatedName)
+                    return kvp.Key;
             }
             throw new ArgumentException(generatedName);
         }

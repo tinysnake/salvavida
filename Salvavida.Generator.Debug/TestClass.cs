@@ -55,7 +55,8 @@ namespace Salvavida.Generator.Debug
         [SaveSeparately]
         [NonSerialized]
         public List<InventoryItemData> inventory;
-        [SaveSeparately]
+        //[SaveSeparately]
+        [SerializeField]
         private InventoryItemData handInventory;
 
         private void STest()

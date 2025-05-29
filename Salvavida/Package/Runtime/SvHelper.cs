@@ -79,7 +79,7 @@ namespace Salvavida
             return null;
         }
 
-        public static void TrySaveProperty<TParent, T>(this TParent savable, string propName, T value, bool isSeperated) where TParent : ISavable
+        public static void TrySaveProperty<TParent, T>(this TParent? savable, string propName, T? value, bool isSeperated) where TParent : ISavable
         {
             if (savable == null)
                 return;
@@ -99,7 +99,7 @@ namespace Salvavida
                 return;
             }
 
-            // if savable's parent is not null, then the save action will perform by it's parent, not it self.
+            // if savable's parent is not null, then the save action will perform by its parent, not itself.
             var parent = savable.SvParent;
             if (parent != null)
                 return;
@@ -108,7 +108,7 @@ namespace Salvavida
             serializer?.FreshSaveByPolicy(savable);
         }
 
-        public static void TrySave<TParent, T>(this TParent savable, string propName, T value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
+        public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
         {
             if (savable == null)
                 return;
@@ -134,7 +134,7 @@ namespace Salvavida
                 return;
             }
 
-            // if savable's parent is not null, then the save action will perform by it's parent, not it self.
+            // if savable's parent is not null, then the save action will perform by its parent, not itself.
             var parent = savable.SvParent;
             if (parent != null)
                 return;
@@ -143,7 +143,7 @@ namespace Salvavida
             serializer?.FreshSaveByPolicy(savable);
         }
 
-        public static void TryUpdateId<T>(this T savable, string oldId) where T : ISavable
+        public static void TryUpdateId<T>(this T? savable, string oldId) where T : ISavable
         {
             if (savable == null)
                 return;
@@ -153,7 +153,7 @@ namespace Salvavida
             serializer.FreshUpdateIdByPolicy(savable, oldId.AsMemory());
         }
 
-        public static void TryUpdateOrder<T>(this T savable, int order) where T : ISavable
+        public static void TryUpdateOrder<T>(this T? savable, int order) where T : ISavable
         {
             if (savable == null)
                 return;
@@ -163,7 +163,7 @@ namespace Salvavida
             serializer.FreshUpdateOrderByPolicy(savable, order);
         }
 
-        public static void TryThrowOnSvIdEmpty<T>(T sv) where T : ISavable
+        public static void TryThrowOnSvIdEmpty<T>(T? sv) where T : ISavable
         {
             if (sv == null)
                 throw new NullReferenceException(nameof(sv));
@@ -173,6 +173,40 @@ namespace Salvavida
                     throw new ArgumentNullException($"The child object of {sv.GetSavePathAsSpan(new PathBuilder()).ToString()} has a empty SvId");
                 else
                     throw new ArgumentException(nameof(sv.SvId));
+            }
+        }
+
+        public static void PropertyAfterSerialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx) where TParent : ISavable
+        {
+            if (sv == null)
+                return;
+            if (string.IsNullOrEmpty(sv.SvId))
+                throw new NullReferenceException("sv.SvId");
+            var path = ctx.Path;
+            path.Push(sv.SvId, PathBuilder.Type.Property);
+            try
+            {
+                sv.AfterSerialize(serializer, ctx);
+            }
+            finally
+            {
+                path.Pop();
+            }
+        }
+        
+        public static void PropertyAfterDeserialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
+        {
+            if (sv == null)
+                return;
+            var path = ctx.Path;
+            path.Push(propName, PathBuilder.Type.Property);
+            try
+            {
+                sv.AfterDeserialize(serializer, ctx);
+            }
+            finally
+            {
+                path.Pop();
             }
         }
     }

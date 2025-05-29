@@ -2,6 +2,7 @@ bin/
 obj/
 .vs/
 .vscode/
+.idea/
 /*.meta
 
 Salvavida.Generator.Debug/salvavida.output.log

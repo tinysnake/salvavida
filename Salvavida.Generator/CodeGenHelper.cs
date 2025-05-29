@@ -10,6 +10,9 @@ namespace Salvavida.Generator
         public const string PROPERTY_NAME_ATTRIBUTE_NAME = "Salvavida.PropertyNameAttribute";
         public const string IGNORE_ATTRIBUTE_NAME = "Salvavida.IgnoreAttribute";
         public const string SAVE_SEPARATELY_ATTRIBUTE_NAME = "Salvavida.SaveSeparatelyAttribute";
+        public const string SAVABLE_ATTRIBUTE_NAME = "Salvavida.SavableAttribute";
+        public const string CLASS_NAME_SYSTEM_OBJECT = "object";
+        public const string INTERFACE_NAME_ISAVABLE = "Salvavida.ISavable";
         public static bool IsOrderedClass(CodeGenerationContext ctx)
         {
             var salvavidaAttr = ctx.TypeSymbol.GetAttributes().Where(ad => ad.AttributeClass?.ToDisplayString() == SalvavidaGenerator.SALVAVIDA_ATTRIBUTE).First();
@@ -110,6 +113,46 @@ namespace Salvavida.Generator
             }
             elemTypeSymbols = null;
             return CollectionType.None;
+        }
+
+        public static bool GetIsSavable(CodeGenerationContext ctx, TypeSyntax typeSyntax)
+        {
+            var typeSymbol = ctx.SemanticModel.GetSymbolInfo(typeSyntax).Symbol as ITypeSymbol;
+            if (typeSymbol == null)
+                return false;
+            return GetIsSavable(typeSymbol);
+        }
+
+        public static bool GetIsSavable(ITypeSymbol typeSymbol)
+        {
+            if (typeSymbol.SpecialType != SpecialType.None)
+                return false;
+            foreach (var inf in typeSymbol.AllInterfaces)
+            {
+                if (inf.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == INTERFACE_NAME_ISAVABLE)
+                    return true;
+            }
+            var parent = typeSymbol;
+            while (parent != null)
+            {
+                if (parent.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == CLASS_NAME_SYSTEM_OBJECT)
+                    break;
+                if (GetIsSavableSingle(parent))
+                    return true;
+                parent = parent.BaseType;
+            }
+            return false;
+        }
+
+        private static bool GetIsSavableSingle(ITypeSymbol typeSymbol)
+        {
+            var attrs = typeSymbol.GetAttributes();
+            foreach (var ad in attrs)
+            {
+                if (ad.AttributeClass?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == SAVABLE_ATTRIBUTE_NAME)
+                    return true;
+            }
+            return false;
         }
     }
 }

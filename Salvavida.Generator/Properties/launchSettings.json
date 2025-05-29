@@ -2,7 +2,7 @@
   "profiles": {
     "Profile 1": {
       "commandName": "DebugRoslynComponent",
-      "targetProject": "..\\Salvavida.Generator.Debug\\Salvavida.Generator.Debug.csproj"
+      "targetProject": "../Salvavida.Generator.Debug/Salvavida.Generator.Debug.csproj"
     }
   }
 }
