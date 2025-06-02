@@ -148,20 +148,39 @@ namespace Salvavida
         }
 
 
-        public void FreshActionByPolicy<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
+        public async void FreshActionByPolicy<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
         {
             if (SavePolicy == SavePolicy.Sync)
                 FreshActionSync(parent, action, onFail);
             else
-                FreshActionAsync(parent, action, onFail, default);
+                await FreshActionAsync(parent, action, onFail, default);
         }
 
-        public void FreshActionAsync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
+        public async void FreshActionByPolicy<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
+        {
+            if (SavePolicy == SavePolicy.Sync)
+                FreshActionSync(parent, action, onFail);
+            else
+                await FreshActionAsync(parent, hashCoder, action, onFail, default);
+        }
+
+        public Task FreshActionAsync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
+        {
+            return FreshActionAsync(parent, action.GetHashCode(), action, onFail, token);
+        }
+
+
+        public Task FreshActionAsync<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
+        {
+            return FreshActionAsync(parent, hashCoder.GetHashCode(), action, onFail, token);
+        }
+
+        private async Task FreshActionAsync<T>(T parent, int hashCode, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
         {
             var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            AsyncIO.QueueJob(new AsyncVoidJob<SerializeContext>(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, hashCode, x =>
             {
                 try
                 {
@@ -176,7 +195,9 @@ namespace Salvavida
                         DefaultOnActionFailed(ctx, ex);
                     }
                 }
-            }, token));
+            }, token);
+            AsyncIO.QueueJob(job);
+            await job;
         }
 
         public void FreshActionSync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
@@ -219,7 +240,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(data));
             var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
-            var job = new AsyncValueJob<SerializeContext, bool>(ctxScope, x => Has(x), token);
+            var job = new AsyncValueJob<SerializeContext, bool>(ctxScope, data.GetHashCode(), x => Has(x), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
@@ -272,7 +293,7 @@ namespace Salvavida
                 return;
             var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x =>
             {
                 try
                 {
@@ -348,7 +369,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x =>
             {
                 try
                 {
@@ -422,7 +443,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x => DoSaveObject(data, x), token);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x => DoSaveObject(data, x), token);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -447,7 +468,7 @@ namespace Salvavida
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             ctx.Path.Push(propName.Span, type);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x => DoSaveObject(data, x), default);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x => DoSaveObject(data, x), default);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -562,7 +583,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(svid));
             var ctxScope = GetContextScope(out var ctx);
             ctx.Path.Push(svid.Span, PathBuilder.Type.Property);
-            var job = new AsyncValueJob<SerializeContext, T?>(ctxScope, x => DoRead<T>(x, out _), token);
+            var job = new AsyncValueJob<SerializeContext, T?>(ctxScope, SvHelper.GetHashCodeFromSpan(svid.Span), x => DoRead<T>(x, out _), token);
             AsyncIO.QueueJob(job);
             return await job;
         }
@@ -656,7 +677,7 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x =>
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x =>
             {
                 try
                 {
@@ -744,7 +765,7 @@ namespace Salvavida
             savable.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             DeleteAll(ctx);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, x => DeleteAll(x), token);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, savable.GetHashCode(), x => DeleteAll(x), token);
             AsyncIO.QueueJob(job);
             await job;
         }

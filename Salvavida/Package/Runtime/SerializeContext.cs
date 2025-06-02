@@ -1,16 +1,13 @@
 namespace Salvavida
 {
-    public class SerializeContext : IJobJoinable
+    public class SerializeContext
     {
 
         public PathBuilder Path { get; internal set; }
         public bool UniqueLocked { get; internal set; }
 
-        protected int _joinableSignatrue;
-
         public virtual void GetFromPool()
         {
-            _joinableSignatrue = SvHelper.randomizer.Next();
         }
 
         public virtual void ReturnToPool()
@@ -18,6 +15,11 @@ namespace Salvavida
 
         }
 
-        public virtual int GetJoinableSignature() => _joinableSignatrue;
+        public override int GetHashCode()
+        {
+            if (Path == null)
+                return 0;
+            return SvHelper.GetHashCodeFromSpan(Path.AsSpan());
+        }
     }
 }

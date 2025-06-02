@@ -207,5 +207,15 @@ namespace Salvavida
                 path.Pop();
             }
         }
+
+        public static int GetHashCodeFromSpan<T>(ReadOnlySpan<T> span)
+        {
+            var hc = new HashCode();
+            foreach (var t in span)
+            {
+                hc.Add(t);
+            }
+            return hc.ToHashCode();
+        }
     }
 }

@@ -4,11 +4,11 @@ using System.Collections.Concurrent;
 namespace Salvavida
 {
     /// <summary>
-    /// Let Save or Read opertions run asynchronously, this is only a half implementation, you need you implement your own other half:
-    /// 1. Find a appropriate oppertunity to execute "RunJobs" method, usually in other thread.
-    /// 2. Execute "CompletedFinishedJobs" right after "RunJobs" finishs, prefer in main thread.
+    /// Let Save or Read operations run asynchronously, this is only a half implementation, you need you implement your own other half:
+    /// 1. Find an appropriate opportunity to execute "RunJobs" method, usually in other thread.
+    /// 2. Execute "CompleteFinishedJobs" right after "RunJobs" finishes, prefer in main thread.
     /// </summary>
-    public abstract partial class AsyncIO : IDisposable
+    public abstract class AsyncIO : IDisposable
     {
         protected readonly ConcurrentDictionary<int, AsyncJob> _jobs = new();
         protected readonly ConcurrentBag<AsyncJob> _finishedJobs = new();
@@ -17,14 +17,14 @@ namespace Salvavida
 
         public void QueueJob(AsyncJob job)
         {
-            var signature = job.GetJoinableSignature();
-            if (_jobs.TryGetValue(signature, out var j))
+            var hashCode = job.GetHashCode();
+            if (_jobs.TryGetValue(hashCode, out var j))
             {
                 job.JoinJob(j);
-                _jobs.TryUpdate(signature, job, j);
+                _jobs.TryUpdate(hashCode, job, j);
             }
             else
-                _jobs.TryAdd(signature, job);
+                _jobs.TryAdd(hashCode, job);
 
             AfterQueueJob();
         }
