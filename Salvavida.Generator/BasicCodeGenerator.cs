@@ -615,7 +615,7 @@ namespace Salvavida.Generator
                 {
                     if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
                         continue;
-                    sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterSerialize(serializer, ctx);");
+                    sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterSerialize(serializer, ctx,  \"{_infoStore!.nameMappings[kvp.Key]}\");");
                 }
                 sb.WriteLine("OnAfterSerialize(serializer, ctx);");
             }

@@ -176,14 +176,12 @@ namespace Salvavida
             }
         }
 
-        public static void PropertyAfterSerialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx) where TParent : ISavable
+        public static void PropertyAfterSerialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
         {
             if (sv == null)
                 return;
-            if (string.IsNullOrEmpty(sv.SvId))
-                throw new NullReferenceException("sv.SvId");
             var path = ctx.Path;
-            path.Push(sv.SvId, PathBuilder.Type.Property);
+            path.Push(propName, PathBuilder.Type.Property);
             try
             {
                 sv.AfterSerialize(serializer, ctx);
