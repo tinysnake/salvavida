@@ -131,15 +131,6 @@ namespace Salvavida
                 throw new ArgumentNullException("path is empty");
         }
 
-        protected virtual bool CheckNotDirty<T>(T value)
-        {
-            if (DisableDirtyCheck)
-                return false;
-            if (value is ISavable sv)
-                return !sv.IsDirty;
-            return false;
-        }
-
         protected FreshActionLocker BeginFreshAction(out SerializeContext ctxBuilder)
         {
             var locker = new FreshActionLocker(this);
@@ -172,7 +163,7 @@ namespace Salvavida
 
         public Task FreshActionAsync<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
         {
-            return FreshActionAsync(parent, hashCoder.GetHashCode(), action, onFail, token);
+            return FreshActionAsync(parent, hashCoder?.GetHashCode() ?? 0, action, onFail, token);
         }
 
         private async Task FreshActionAsync<T>(T parent, int hashCode, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
@@ -289,8 +280,6 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             var ctxScope = GetContextScope(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
             var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x =>
@@ -312,8 +301,6 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             using var locker = BeginFreshAction(out var ctx);
             data.GetParentPathAsSpan(ctx.Path);
             try
@@ -345,8 +332,6 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             using var locker = BeginFreshAction(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -364,8 +349,6 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -388,8 +371,6 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             ctx.Path.Push(data.SvId!, PathBuilder.Type.Collection);
             try
             {
@@ -426,8 +407,6 @@ namespace Salvavida
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             using var locker = BeginFreshAction(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -438,8 +417,6 @@ namespace Salvavida
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             var ctxScope = GetContextScope(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -462,13 +439,11 @@ namespace Salvavida
         {
             if (parent == null)
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             ctx.Path.Push(propName.Span, type);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data.GetHashCode(), x => DoSaveObject(data, x), default);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, x), default);
             AsyncIO.QueueJob(job);
             await job;
         }
@@ -477,8 +452,6 @@ namespace Salvavida
         {
             if (parent == null)
                 throw new ArgumentNullException(nameof(data));
-            if (CheckNotDirty(data))
-                return;
             using var locker = BeginFreshAction(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
@@ -490,8 +463,6 @@ namespace Salvavida
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
                 throw new ArgumentNullException(nameof(savable));
-            if (CheckNotDirty(savable))
-                return;
             ctx.Path.Push(savable.SvId!, type);
             try
             {
@@ -532,9 +503,6 @@ namespace Salvavida
                 }
                 return;
             }
-
-            if (CheckNotDirty(obj))
-                return;
 
             try
             {

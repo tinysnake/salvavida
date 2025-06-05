@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System;
 
 #if USE_UNITASK
 using Cysharp.Threading.Tasks;
@@ -21,7 +22,7 @@ namespace Salvavida.Unity
                 parentObject = GameObject.Find("/UnityAsyncIOImpl");
                 if (!parentObject)
                     parentObject = new GameObject("UnityAsyncIOImpl");
-                Object.DontDestroyOnLoad(parentObject);
+                UnityEngine.Object.DontDestroyOnLoad(parentObject);
             }
 
             ParentObject = parentObject;
@@ -40,8 +41,27 @@ namespace Salvavida.Unity
         {
             _threadedTask = Task.Run(RunJobs);
             await _threadedTask;
+            if (_threadedTask.Exception != null)
+            {
+                LogException(_threadedTask.Exception);
+            }
         }
 
+        private void LogException(Exception ex)
+        {
+            if (ex is AggregateException agEx)
+            {
+                foreach (var innerEx in agEx.Flatten().InnerExceptions)
+                {
+                    LogException(innerEx);
+                }
+            }
+            else
+            {
+                Debug.LogException(ex);
+            }
+        }
+        
         internal void CompleteFinishedJobsInternal()
         {
             CompleteFinishedJobs();
