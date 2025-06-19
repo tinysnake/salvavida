@@ -79,33 +79,19 @@ namespace Salvavida
             return null;
         }
 
-        public static void TrySaveProperty<TParent, T>(this TParent? savable, string propName, T? value, bool isSeperated) where TParent : ISavable
+        public static void TrySaveSeperatedProperty<TParent, T>(this TParent? savable, Serializer serializer, SerializeContext ctx, string propName, T? value, bool isSeperated) where TParent : ISavable
         {
             if (savable == null)
                 return;
             if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
                 return;
-
-            Serializer? serializer = null;
-            if (isSeperated)
-            {
-                serializer = GetSerializer(savable);
-                if (serializer == null)
-                    return;
-                if (value is ISavable sv)
-                    serializer.FreshSaveByPolicy(sv);
-                else
-                    serializer.FreshSaveByPolicy(savable, propName.AsMemory(), value, PathBuilder.Type.Property);
-                return;
-            }
-
-            // if savable's parent is not null, then the save action will perform by its parent, not itself.
-            var parent = savable.SvParent;
-            if (parent != null)
+            if (serializer == null)
                 return;
 
-            serializer ??= GetSerializer(savable);
-            serializer?.FreshSaveByPolicy(savable);
+            if (value is ISavable sv)
+                serializer.Save(sv, ctx, PathBuilder.Type.Property);
+            else
+                serializer.SaveObject(value, ctx, propName, PathBuilder.Type.Property);
         }
 
         public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
@@ -191,7 +177,7 @@ namespace Salvavida
                 path.Pop();
             }
         }
-        
+
         public static void PropertyAfterDeserialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
         {
             if (sv == null)

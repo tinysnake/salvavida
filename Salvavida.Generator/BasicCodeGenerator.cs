@@ -604,7 +604,7 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"this.TrySaveProperty(\"{prop}\", {fieldName}, true);");
+                        sb.WriteLine($"this.TrySaveSeperatedProperty(serializer, ctx, \"{prop}\", {fieldName}, true);");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
