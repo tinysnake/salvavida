@@ -50,7 +50,6 @@ namespace Salvavida
         public IObjectPool<SerializeContext> ContextBuilderPool { get; set; }
         public IObjectPool<PathBuilder> PathBuilderPool { get; set; }
         public SavePolicy SavePolicy { get; set; } = SavePolicy.Sync;
-        public bool DisableDirtyCheck { get; set; }
         public virtual IIdGenerator IdGenerator
         {
             get
@@ -138,10 +137,15 @@ namespace Salvavida
             return locker;
         }
 
+        protected virtual bool CheckUseAsync()
+        {
+            return SavePolicy == SavePolicy.Async;
+        }
+
 
         public async void FreshActionByPolicy<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
         {
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshActionSync(parent, action, onFail);
             else
                 await FreshActionAsync(parent, action, onFail, default);
@@ -149,7 +153,7 @@ namespace Salvavida
 
         public async void FreshActionByPolicy<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
         {
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshActionSync(parent, action, onFail);
             else
                 await FreshActionAsync(parent, hashCoder, action, onFail, default);
@@ -270,7 +274,7 @@ namespace Salvavida
 
         public async void FreshUpdateIdByPolicy<T>(T data, ReadOnlyMemory<char> oldId) where T : ISavable
         {
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshUpdateIdSync(data, oldId.Span);
             else
                 await FreshUpdateIdAsync(data, oldId, default);
@@ -322,7 +326,7 @@ namespace Salvavida
 
         public async void FreshUpdateOrderByPolicy(ISavable data, int order)
         {
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshUpdateOrderSync(data, order);
             else
                 await FreshUpdateOrderAsync(data, order, default);
@@ -397,7 +401,7 @@ namespace Salvavida
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshSaveSync(data);
             else
                 await FreshSaveAsync(data, default);
@@ -429,7 +433,7 @@ namespace Salvavida
         {
             if (parent == null)
                 throw new ArgumentNullException(nameof(data));
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshSaveSync(parent, propName.Span, data, type);
             else
                 await FreshSaveAsync(parent, propName, data, type);
@@ -615,7 +619,7 @@ namespace Salvavida
 
         public async void FreshDeleteByPolicy<T>(T data) where T : ISavable
         {
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshDeleteSync(data);
             else
                 await FreshDeleteAsync(data, default);
@@ -709,7 +713,7 @@ namespace Salvavida
 
         public async void FreshDeleteAllByPolicy<T>(T savable) where T : ISavable
         {
-            if (SavePolicy == SavePolicy.Sync)
+            if (CheckUseAsync())
                 FreshDeleteAllSync(savable);
             else
                 await FreshDeleteAllAsync(savable, default);
