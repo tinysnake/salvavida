@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 namespace Salvavida
 {
@@ -10,23 +11,30 @@ namespace Salvavida
     /// </summary>
     public abstract class AsyncIO : IDisposable
     {
-        protected readonly ConcurrentDictionary<int, AsyncJob> _jobs = new();
+        protected readonly Dictionary<int, AsyncJob> _jobs = new();
+        protected readonly HashSet<AsyncJob> _jobsToRun = new();
         protected readonly ConcurrentBag<AsyncJob> _finishedJobs = new();
+        protected readonly object _lock = new();
 
         public bool HasJobsToRun => _jobs.Count > 0;
 
         public void QueueJob(AsyncJob job)
         {
             var hashCode = job.GetHashCode();
-            if (_jobs.TryGetValue(hashCode, out var j))
+            lock (_lock)
             {
-                job.JoinJob(j);
-                _jobs.TryUpdate(hashCode, job, j);
-            }
-            else
-                _jobs.TryAdd(hashCode, job);
+                var replaced = false;
+                if (_jobs.TryGetValue(hashCode, out var j))
+                {
+                    replaced = true;
+                    job.JoinJob(j);
+                    _jobsToRun.Remove(j);
+                }
+                _jobsToRun.Add(job);
+                _jobs[hashCode] = job;
 
-            AfterQueueJob();
+                AfterQueueJob();
+            }
         }
 
         protected virtual void AfterQueueJob()
@@ -36,21 +44,31 @@ namespace Salvavida
 
         protected void RunJobs()
         {
-            while (_jobs.Count > 0)
+            while (true)
             {
-                var keys = _jobs.Keys;
-                foreach (var key in keys)
+                AsyncJob job = null;
+                lock (_lock)
                 {
-                    if (_jobs.TryRemove(key, out var job))
+                    if (_jobsToRun.Count <= 0)
+                        break;
+                    foreach (var j in _jobsToRun)
                     {
-                        job.RunJob();
-                        _finishedJobs.Add(job);
+                        job = j;
+                        break;
                     }
+                    if (job == null)
+                        break;
+                    _jobsToRun.Remove(job);
+                    var hashCode = job.GetHashCode();
+                    _jobs.Remove(hashCode);
                 }
+
+                job.RunJob();
+                _finishedJobs.Add(job);
             }
         }
 
-        protected void CompleteFinishedJobs()
+        protected virtual void CompleteFinishedJobs()
         {
             while (_finishedJobs.TryTake(out var job))
             {

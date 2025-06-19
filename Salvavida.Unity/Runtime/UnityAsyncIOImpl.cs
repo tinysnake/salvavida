@@ -33,27 +33,29 @@ namespace Salvavida.Unity
 
         public GameObject ParentObject { get; private set; }
 
-#if USE_UNITASK
-        internal async UniTaskVoid RunJobThreaded()
-#else
-        internal async void RunJobThreaded()
-#endif
+        internal void RunJobThreaded()
         {
-            _threadedTask = Task.Run(RunJobs);
-            await _threadedTask;
-            if (_threadedTask.Exception != null)
+            if (IsRunningAsyncJob)
+                return;
+            _threadedTask = CreateJobThreaded();
+            if (_threadedTask.IsFaulted)
             {
-                LogException(_threadedTask.Exception);
+                PrintException(_threadedTask.Exception);
             }
         }
 
-        private void LogException(Exception ex)
+        private Task CreateJobThreaded()
         {
-            if (ex is AggregateException agEx)
+            return Task.Run(RunJobs);
+        }
+
+        private void PrintException(Exception ex)
+        {
+            if (ex is AggregateException aex)
             {
-                foreach (var innerEx in agEx.Flatten().InnerExceptions)
+                foreach (var iex in aex.Flatten().InnerExceptions)
                 {
-                    LogException(innerEx);
+                    PrintException(iex);
                 }
             }
             else
@@ -61,7 +63,7 @@ namespace Salvavida.Unity
                 Debug.LogException(ex);
             }
         }
-        
+
         internal void CompleteFinishedJobsInternal()
         {
             CompleteFinishedJobs();
@@ -69,6 +71,7 @@ namespace Salvavida.Unity
 
         public override void ForceComplete()
         {
+            _threadedTask = CreateJobThreaded();
             if (IsRunningAsyncJob)
                 _threadedTask.Wait();
             CompleteFinishedJobs();

@@ -85,13 +85,14 @@ namespace Salvavida
                 return;
             if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
                 return;
-            if (serializer == null)
-                return;
 
-            if (value is ISavable sv)
-                serializer.Save(sv, ctx, PathBuilder.Type.Property);
-            else
-                serializer.SaveObject(value, ctx, propName, PathBuilder.Type.Property);
+                if (serializer == null)
+                    return;
+                if (value is ISavable sv)
+                    serializer.Save(sv, ctx, PathBuilder.Type.Property);
+                else
+                    serializer.SaveObject(value, ctx, propName, PathBuilder.Type.Property);
+                return;
         }
 
         public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
@@ -177,7 +178,7 @@ namespace Salvavida
                 path.Pop();
             }
         }
-
+        
         public static void PropertyAfterDeserialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
         {
             if (sv == null)

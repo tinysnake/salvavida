@@ -38,9 +38,21 @@ namespace Salvavida
             if (_token.IsCancellationRequested)
                 return;
             DoRunJob();
+            OnJobRan();
         }
 
         protected abstract void DoRunJob();
+
+        protected void OnJobRan()
+        {
+            DoJobRan();
+            if (_joinedJob != null)
+            {
+                _joinedJob.OnJobRan();
+            }
+        }
+
+        protected abstract void DoJobRan();
 
         public virtual void SetComplete()
         {
@@ -108,13 +120,14 @@ namespace Salvavida
             return tScope.Value.GetHashCode();
         }
 
-        private IObjectPool<T>.UsingScope _tScope;
+        protected IObjectPool<T>.UsingScope _tScope;
         public T? ScopedValue => _tScope.Value;
 
-        public sealed override void SetComplete()
+        public override void SetComplete()
         {
             base.SetComplete();
-            _tScope.Dispose();
+            if (ScopedValue != null)
+                throw new InvalidOperationException("Dangling scope, you must clear scope before \"SetComplete\"!");
         }
     }
 
@@ -138,6 +151,10 @@ namespace Salvavida
             if (_token.IsCancellationRequested)
                 return;
             Interlocked.Exchange(ref _action, null)?.Invoke();
+        }
+
+        protected override void DoJobRan()
+        {
         }
 
         public void GetResult()
@@ -180,6 +197,12 @@ namespace Salvavida
             if (_token.IsCancellationRequested)
                 return;
             Interlocked.Exchange(ref _action, null)?.Invoke(ScopedValue);
+        }
+
+        protected override void DoJobRan()
+        {
+            _tScope.Dispose();
+            _tScope = default;
         }
 
         public void GetResult()
@@ -228,6 +251,10 @@ namespace Salvavida
             Result = action.Invoke();
         }
 
+        protected override void DoJobRan()
+        {
+        }
+
         public TResult? GetResult()
         {
             _token.ThrowIfCancellationRequested();
@@ -273,6 +300,12 @@ namespace Salvavida
             if (action == null)
                 return;
             Result = action.Invoke(ScopedValue);
+        }
+
+        protected override void DoJobRan()
+        {
+            _tScope.Dispose();
+            _tScope = default;
         }
 
         public TResult? GetResult()
