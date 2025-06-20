@@ -71,6 +71,8 @@ namespace Salvavida.Unity
 
         public override void ForceComplete()
         {
+            if (_jobsToRun.Count <= 0)
+                return;
             _threadedTask = CreateJobThreaded();
             if (IsRunningAsyncJob)
                 _threadedTask.Wait();
