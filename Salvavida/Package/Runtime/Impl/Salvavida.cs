@@ -26,13 +26,10 @@ namespace Salvavida.DefaultImpl
 
         public T CreateData<T>() where T : new() => Serializer.CreateData<T>();
 
-        public void Dispose()
+        public virtual void Dispose()
         {
-            OnDispose();
             Serializer.Dispose();
         }
-
-        protected virtual void OnDispose() { }
 
         public abstract void Load();
 
