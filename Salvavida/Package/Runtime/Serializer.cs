@@ -143,7 +143,7 @@ namespace Salvavida
         }
 
 
-        public async void FreshActionByPolicy<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
+        public async void FreshActionByPolicy<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception>? onFail) where T : ISavable
         {
             if (CheckUseAsync())
                 FreshActionSync(parent, action, onFail);
@@ -151,7 +151,7 @@ namespace Salvavida
                 await FreshActionAsync(parent, action, onFail, default);
         }
 
-        public async void FreshActionByPolicy<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
+        public async void FreshActionByPolicy<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception>? onFail) where T : ISavable
         {
             if (CheckUseAsync())
                 FreshActionSync(parent, action, onFail);
@@ -159,18 +159,18 @@ namespace Salvavida
                 await FreshActionAsync(parent, hashCoder, action, onFail, default);
         }
 
-        public Task FreshActionAsync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
+        public Task FreshActionAsync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception>? onFail, CancellationToken token) where T : ISavable
         {
             return FreshActionAsync(parent, action.GetHashCode(), action, onFail, token);
         }
 
 
-        public Task FreshActionAsync<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
+        public Task FreshActionAsync<T, THashCoder>(T parent, THashCoder hashCoder, Action<SerializeContext> action, Action<SerializeContext, Exception>? onFail, CancellationToken token) where T : ISavable
         {
             return FreshActionAsync(parent, hashCoder?.GetHashCode() ?? 0, action, onFail, token);
         }
 
-        private async Task FreshActionAsync<T>(T parent, int hashCode, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail, CancellationToken token) where T : ISavable
+        private async Task FreshActionAsync<T>(T parent, int hashCode, Action<SerializeContext> action, Action<SerializeContext, Exception>? onFail, CancellationToken token) where T : ISavable
         {
             var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
@@ -195,7 +195,7 @@ namespace Salvavida
             await job;
         }
 
-        public void FreshActionSync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception> onFail) where T : ISavable
+        public void FreshActionSync<T>(T parent, Action<SerializeContext> action, Action<SerializeContext, Exception>? onFail) where T : ISavable
         {
             using var locker = BeginFreshAction(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
@@ -324,7 +324,7 @@ namespace Salvavida
             throw ex;
         }
 
-        public async void FreshUpdateOrderByPolicy(ISavable data, int order)
+        public async void FreshUpdateOrderByPolicy<T>(T data, int order) where T : ISavable
         {
             if (CheckUseAsync())
                 FreshUpdateOrderSync(data, order);
@@ -332,7 +332,7 @@ namespace Salvavida
                 await FreshUpdateOrderAsync(data, order, default);
         }
 
-        public void FreshUpdateOrderSync(ISavable data, int order)
+        public void FreshUpdateOrderSync<T>(T data, int order) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
@@ -349,7 +349,7 @@ namespace Salvavida
             }
         }
 
-        public async Task FreshUpdateOrderAsync(ISavable data, int order, CancellationToken token)
+        public async Task FreshUpdateOrderAsync<T>(T data, int order, CancellationToken token) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
@@ -371,7 +371,7 @@ namespace Salvavida
             await job;
         }
 
-        public void UpdateOrder(ISavable data, SerializeContext ctx, int order)
+        public void UpdateOrder<T>(T data, SerializeContext ctx, int order) where T : ISavable
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
@@ -391,7 +391,7 @@ namespace Salvavida
         }
 
 
-        protected abstract void DoUpdateOrder(ISavable data, SerializeContext ctx, int order);
+        protected abstract void DoUpdateOrder<T>(T data, SerializeContext ctx, int order) where T : ISavable;
         protected virtual void OnUpdateOrderFailed(SerializeContext ctx, Exception ex)
         {
             throw ex;
@@ -429,40 +429,6 @@ namespace Salvavida
             await job;
         }
 
-        public async void FreshSaveByPolicy<T>(ISavable parent, ReadOnlyMemory<char> propName, T data, PathBuilder.Type type)
-        {
-            if (parent == null)
-                throw new ArgumentNullException(nameof(data));
-            if (CheckUseAsync())
-                FreshSaveSync(parent, propName.Span, data, type);
-            else
-                await FreshSaveAsync(parent, propName, data, type);
-        }
-
-        public async Task FreshSaveAsync<T>(ISavable parent, ReadOnlyMemory<char> propName, T data, PathBuilder.Type type)
-        {
-            if (parent == null)
-                throw new ArgumentNullException(nameof(data));
-            var ctxScope = GetContextScope(out var ctx);
-            parent.GetSavePathAsSpan(ctx.Path);
-            ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName.Span, type);
-            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, x), default);
-            AsyncIO.QueueJob(job);
-            await job;
-        }
-
-        protected void FreshSaveSync<T>(ISavable parent, ReadOnlySpan<char> propName, T data, PathBuilder.Type type)
-        {
-            if (parent == null)
-                throw new ArgumentNullException(nameof(data));
-            using var locker = BeginFreshAction(out var ctx);
-            parent.GetSavePathAsSpan(ctx.Path);
-            ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName, type);
-            DoSaveObject(data, ctx);
-        }
-
         public void Save<T>(T savable, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
@@ -478,11 +444,102 @@ namespace Salvavida
             }
         }
 
-        public void SaveObject<T>(T obj, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
+        public void Save<T>(ISavable parent, SerializeContext ctx, ReadOnlySpan<char> propName, T data, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            if (propName.IsEmpty)
+                throw new ArgumentNullException(nameof(propName));
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName, pathBuilderType);
+            DoSaveObject(data, ctx);
+        }
+
+        public void Save<T>(ISavable parent, SerializeContext ctx, ReadOnlySpan<char> propName, T data, Type type, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            if (propName.IsEmpty)
+                throw new ArgumentNullException(nameof(propName));
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName, pathBuilderType);
+            DoSaveObject(data, type, ctx);
+        }
+
+        public async void FreshSaveByPolicy<T>(ISavable parent, ReadOnlyMemory<char> propName, T data, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            if (CheckUseAsync())
+                FreshSaveSync(parent, propName.Span, data, pathBuilderType);
+            else
+                await FreshSaveAsync(parent, propName, data, pathBuilderType);
+        }
+
+        public async Task FreshSaveAsync<T>(ISavable parent, ReadOnlyMemory<char> propName, T data, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            var ctxScope = GetContextScope(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName.Span, pathBuilderType);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, x), default);
+            AsyncIO.QueueJob(job);
+            await job;
+        }
+
+        protected void FreshSaveSync<T>(ISavable parent, ReadOnlySpan<char> propName, T data, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            using var locker = BeginFreshAction(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName, pathBuilderType);
+            DoSaveObject(data, ctx);
+        }
+
+
+        public async void FreshSaveByPolicy<T>(ISavable parent, ReadOnlyMemory<char> propName, T data, Type type, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            if (CheckUseAsync())
+                FreshSaveSync(parent, propName.Span, data, type, pathBuilderType);
+            else
+                await FreshSaveAsync(parent, propName, data, type, pathBuilderType);
+        }
+
+        public async Task FreshSaveAsync<T>(ISavable parent, ReadOnlyMemory<char> propName, T data, Type type, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            var ctxScope = GetContextScope(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName.Span, pathBuilderType);
+            var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, type, x), default);
+            AsyncIO.QueueJob(job);
+            await job;
+        }
+
+        protected void FreshSaveSync<T>(ISavable parent, ReadOnlySpan<char> propName, T data, Type type, PathBuilder.Type pathBuilderType)
+        {
+            if (parent == null)
+                throw new ArgumentNullException(nameof(data));
+            using var locker = BeginFreshAction(out var ctx);
+            parent.GetSavePathAsSpan(ctx.Path);
+            ThrowIfPathIsEmpty(ctx.Path);
+            ctx.Path.Push(propName, pathBuilderType);
+            DoSaveObject(data, type, ctx);
+        }
+
+        public void SaveObject<T>(T obj, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
-            ctx.Path.Push(propName, type);
+            ctx.Path.Push(propName, pathBuilderType);
             try
             {
                 DoSaveObject(obj, ctx);
@@ -493,7 +550,22 @@ namespace Salvavida
             }
         }
 
-        protected virtual void DoSaveObject<T>(T obj, SerializeContext ctx)
+        public void SaveObject<T>(T obj, Type type, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
+        {
+            if (propName.IsEmpty)
+                throw new ArgumentNullException(nameof(propName));
+            ctx.Path.Push(propName, pathBuilderType);
+            try
+            {
+                DoSaveObject(obj, type, ctx);
+            }
+            finally
+            {
+                ctx.Path.Pop();
+            }
+        }
+
+        private bool TryDeleteOnNull<T>(T obj, SerializeContext ctx)
         {
             if (obj == null)
             {
@@ -505,19 +577,38 @@ namespace Salvavida
                 {
                     OnDeleteFailed(ctx, ex);
                 }
-                return;
+                return true;
             }
+            return false;
+        }
+
+        protected virtual void DoSaveObject<T>(T obj, SerializeContext ctx)
+        {
+            if (TryDeleteOnNull(obj, ctx))
+                return;
 
             try
             {
-                ISavable? sv = null;
-                if (obj is ISavable x)
-                    sv = x;
-                if (sv != null)
-                    BeforeSerialize(sv);
+                BeforeSerialize(obj);
                 DoSaveObjectImpl(obj, ctx);
-                if (sv != null)
-                    AfterSerialize(sv, ctx);
+                AfterSerialize(obj, ctx);
+            }
+            catch (Exception ex)
+            {
+                OnSaveObjectFailed(ctx, ex);
+            }
+        }
+
+        protected virtual void DoSaveObject<T>(T obj, Type type, SerializeContext ctx)
+        {
+            if (TryDeleteOnNull(obj, ctx))
+                return;
+
+            try
+            {
+                BeforeSerialize(obj, type);
+                DoSaveObjectImpl(obj, type, ctx);
+                AfterSerialize(obj, type, ctx);
             }
             catch (Exception ex)
             {
@@ -526,6 +617,7 @@ namespace Salvavida
         }
 
         protected abstract void DoSaveObjectImpl<T>(T obj, SerializeContext ctx);
+        protected abstract void DoSaveObjectImpl<T>(T obj, Type type, SerializeContext ctx);
 
         protected virtual void OnSaveObjectFailed(SerializeContext ctx, Exception ex)
         {
@@ -576,10 +668,10 @@ namespace Salvavida
             if (result is ISavable sv)
             {
                 sv.SvId = ctx.Path.GetSegmentString(^1);
-                AfterDeserialize(sv, ctx);
                 if (result is ISaveWithOrder swo)
                     swo.SvOrder = order;
             }
+            AfterDeserialize(result, ctx);
             return result;
         }
 
@@ -791,21 +883,41 @@ namespace Salvavida
             throw ex;
         }
 
-        protected virtual void BeforeSerialize(ISavable savable)
+        protected virtual void BeforeSerialize<T>(T obj)
         {
-            savable.BeforeSerialize(this);
+            if (obj is not ISavable sv)
+                return;
+            sv.BeforeSerialize(this);
         }
-        protected virtual void AfterSerialize(ISavable savable, SerializeContext ctx)
+        protected virtual void AfterSerialize<T>(T obj, SerializeContext ctx)
         {
-            savable.AfterSerialize(this, ctx);
-            savable.SetDirty(false, false);
+            if (obj is not ISavable sv)
+                return;
+            sv.AfterSerialize(this, ctx);
+            sv.SetDirty(false, false);
         }
-        protected virtual void AfterDeserialize(ISavable savable, SerializeContext ctx)
+        protected virtual void AfterDeserialize<T>(T obj, SerializeContext ctx)
         {
+            if (obj is not ISavable sv)
+                return;
             var path = ctx.Path;
-            savable.SvId ??= path.GetSegmentString(^1);
-            savable.AfterDeserialize(this, ctx);
-            savable.SetDirty(false, false);
+            sv.SvId ??= path.GetSegmentString(^1);
+            sv.AfterDeserialize(this, ctx);
+            sv.SetDirty(false, false);
+        }
+
+        protected virtual void BeforeSerialize<T>(T obj, Type t)
+        {
+            if (obj is not ISavable sv)
+                return;
+            sv.BeforeSerialize(this);
+        }
+        protected virtual void AfterSerialize<T>(T obj, Type t, SerializeContext ctx)
+        {
+            if (obj is not ISavable sv)
+                return;
+            sv.AfterSerialize(this, ctx);
+            sv.SetDirty(false, false);
         }
 
         public virtual void Dispose()

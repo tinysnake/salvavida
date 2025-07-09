@@ -2,6 +2,23 @@
 
 namespace Salvavida.Generator.Debug
 {
+    public interface ITestIF : ISavable
+    {
+
+    }
+
+    [Savable]
+    public partial class TestImpl1 : ITestIF
+    {
+
+    }
+
+    [Savable]
+    public partial class TestImpl2 : ITestIF
+    {
+
+    }
+
     public partial class UserModel
     {
         private int _index;
@@ -14,6 +31,7 @@ namespace Salvavida.Generator.Debug
         private List<HouseModel> _houses;
         [SaveSeparately]
         private List<Friend> _friends;
+
         private Dictionary<string, Friend> _friendsDict;
     }
 

@@ -1,10 +1,9 @@
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
-using System.Linq;
 using System.Collections.Immutable;
-using System.Collections.Generic;
+using System.Linq;
 
 namespace Salvavida.Generator
 {
@@ -394,11 +393,20 @@ namespace Salvavida.Generator
         protected string GetCollectionTypeString(CollectionType colType, ISymbol[] typeSymbols)
         {
             var format = SymbolDisplayFormat.FullyQualifiedFormat;
+            var typeIndex = colType switch
+            {
+                CollectionType.Array or CollectionType.List => 0,
+                CollectionType.Dictionary => 1,
+                _ => throw new NotSupportedException(),
+            };
+            var isSavable = CodeGenHelper.GetIsSavable((ITypeSymbol)typeSymbols[typeIndex]);
+            var savableStr = isSavable ? "Savable" : "";
+
             return colType switch
             {
-                CollectionType.Array => $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.List => $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.Dictionary => $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                CollectionType.Array => $"ObservableArray{savableStr}<{typeSymbols[0].ToDisplayString(format)}>",
+                CollectionType.List => $"ObservableList{savableStr}<{typeSymbols[0].ToDisplayString(format)}>",
+                CollectionType.Dictionary => $"ObservableDictionary{savableStr}<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                 _ => throw new NotSupportedException()
             };
         }
@@ -538,7 +546,7 @@ namespace Salvavida.Generator
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("_svIsDirty = true;");
-                sb.WriteLine("this.TrySave(propName, value, _seperatedProperties, _separatedCollections);");
+                sb.WriteLine("this.TrySave(propName, value, typeof(T), _seperatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, propName);");
             }
             sb.WriteLine();
@@ -549,7 +557,7 @@ namespace Salvavida.Generator
                 sb.WriteLine("if (value is not ISavable sv || string.IsNullOrEmpty(sv.SvId))");
                 sb.WriteLine("    return;");
                 sb.WriteLine("_svIsDirty = true;");
-                sb.WriteLine("this.TrySave(sv.SvId, sv, _seperatedProperties, _separatedCollections);");
+                sb.WriteLine("this.TrySave(sv.SvId, sv, typeof(T), _seperatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, sv.SvId);");
             }
             sb.WriteLine();
@@ -604,7 +612,8 @@ namespace Salvavida.Generator
                     foreach (var prop in _infoStore!.separatedProperties)
                     {
                         var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"this.TrySaveSeperatedProperty(serializer, ctx, \"{prop}\", {fieldName}, true);");
+                        var propType = _infoStore.propTypeMappings[fieldName];
+                        sb.WriteLine($"this.TrySaveSeperatedProperty(serializer, ctx, \"{prop}\", {fieldName}, typeof({propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}));");
                     }
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {

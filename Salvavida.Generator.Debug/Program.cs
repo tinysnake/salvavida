@@ -4,6 +4,7 @@ namespace Salvavida.Generator.Debug
     {
         public static void Main(string[] args)
         {
+            new Person();
             //var tc = new Test() { SvId = "123" };
             //tc.PropertyChanged += (sender, e) =>
             //{

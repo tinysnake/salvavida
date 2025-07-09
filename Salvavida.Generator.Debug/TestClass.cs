@@ -55,13 +55,15 @@ namespace Salvavida.Generator.Debug
         [SaveSeparately]
         [NonSerialized]
         public List<InventoryItemData> inventory;
-        //[SaveSeparately]
-        [SerializeField]
-        private InventoryItemData handInventory;
+        [SaveSeparately]
+        //[NonSerialized]
+        private InventoryItemData _handInventory;
+        [SaveSeparately]
+        private List<ITestIF> _testIfs;
 
         private void STest()
         {
-            this.TrySave(nameof(updatedAt), updatedAt, _seperatedProperties, _separatedCollections);
+            //this.TrySave(nameof(updatedAt), updatedAt, typeof(long), _seperatedProperties, _separatedCollections);
         }
     }
     [Savable]

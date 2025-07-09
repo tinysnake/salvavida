@@ -79,25 +79,22 @@ namespace Salvavida
             return null;
         }
 
-        public static void TrySaveSeperatedProperty<TParent, T>(this TParent? savable, Serializer serializer, SerializeContext ctx, string propName, T? value, bool isSeperated) where TParent : ISavable
+        public static void TrySaveSeperatedProperty<TParent, T>(this TParent? savable, Serializer serializer, SerializeContext ctx, string propName, T? value, Type type) where TParent : ISavable
         {
             if (savable == null)
                 return;
             if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
                 return;
 
-                if (serializer == null)
-                    return;
-                if (value is ISavable sv)
-                    serializer.Save(sv, ctx, PathBuilder.Type.Property);
-                else
-                    serializer.SaveObject(value, ctx, propName, PathBuilder.Type.Property);
+            if (serializer == null)
                 return;
+            serializer.Save(savable, ctx, propName, value, type, PathBuilder.Type.Property);
         }
 
-        public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
+
+        public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, Type type, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
         {
-            if (savable == null)
+            if (savable == null || value == null)
                 return;
             if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
                 return;
@@ -114,10 +111,7 @@ namespace Salvavida
                 serializer = GetSerializer(savable);
                 if (serializer == null)
                     return;
-                if (value is ISavable sv)
-                    serializer.FreshSaveByPolicy(sv);
-                else
-                    serializer.FreshSaveByPolicy(savable, propName.AsMemory(), value, PathBuilder.Type.Property);
+                serializer.FreshSaveByPolicy(savable, propName.AsMemory(), value, type, PathBuilder.Type.Property);
                 return;
             }
 
@@ -178,7 +172,7 @@ namespace Salvavida
                 path.Pop();
             }
         }
-        
+
         public static void PropertyAfterDeserialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
         {
             if (sv == null)
