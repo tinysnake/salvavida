@@ -217,7 +217,7 @@ namespace Salvavida
 
         protected virtual void DefaultOnActionFailed(SerializeContext ctx, Exception ex)
         {
-            throw ex;
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(DefaultOnActionFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
         public bool FreshHas<T>(T data) where T : ISavable
@@ -321,7 +321,7 @@ namespace Salvavida
 
         protected virtual void OnUpdateIdFailed(SerializeContext ctx, Exception ex)
         {
-            throw ex;
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnUpdateIdFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
         public async void FreshUpdateOrderByPolicy<T>(T data, int order) where T : ISavable
@@ -394,7 +394,7 @@ namespace Salvavida
         protected abstract void DoUpdateOrder<T>(T data, SerializeContext ctx, int order) where T : ISavable;
         protected virtual void OnUpdateOrderFailed(SerializeContext ctx, Exception ex)
         {
-            throw ex;
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnUpdateOrderFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
         public async void FreshSaveByPolicy<T>(T data) where T : ISavable
@@ -621,7 +621,7 @@ namespace Salvavida
 
         protected virtual void OnSaveObjectFailed(SerializeContext ctx, Exception ex)
         {
-            throw ex;
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnSaveObjectFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
         public abstract void SaveList<T>(List<T?> list, SerializeContext ctx);
@@ -800,7 +800,7 @@ namespace Salvavida
 
         protected virtual void OnDeleteFailed(SerializeContext ctx, Exception ex)
         {
-            throw ex;
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
         public async void FreshDeleteAllByPolicy<T>(T savable) where T : ISavable
@@ -880,7 +880,7 @@ namespace Salvavida
 
         protected virtual void OnDeleteAllFailed(SerializeContext ctx, Exception ex)
         {
-            throw ex;
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
         protected virtual void BeforeSerialize<T>(T obj)
