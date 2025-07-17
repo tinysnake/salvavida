@@ -478,35 +478,33 @@ namespace Salvavida.Generator
         protected virtual void WriteImplementationsFoot(ScriptBuilder sb, CodeGenerationContext ctx)
         {
             sb.WriteLine("void ISavable.SetParent(ISavable parent)");
+            using (sb.CurlyBracketsScope())
             {
-                using (sb.CurlyBracketsScope())
-                {
-                    sb.WriteLine("SvParent = parent;");
-                }
+                sb.WriteLine("if (Equals(SvParent, parent)) return;");
+                sb.WriteLine("SvParent = parent;");
+                sb.WriteLine("(this as ISavable).SetDirty(true, true);");
             }
             sb.WriteLine();
 
             sb.WriteLine("void ISavable.SetDirty(bool dirty, bool recursively)");
+            using (sb.CurlyBracketsScope())
             {
-                using (sb.CurlyBracketsScope())
+                sb.WriteLine("_svIsDirty = dirty;");
+                if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
                 {
-                    sb.WriteLine("_svIsDirty = dirty;");
-                    if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
+                    sb.WriteLine("if (recursively)");
                     {
-                        sb.WriteLine("if (recursively)");
+                        using (sb.CurlyBracketsScope())
                         {
-                            using (sb.CurlyBracketsScope())
+                            foreach (var prop in _infoStore!.separatedProperties)
                             {
-                                foreach (var prop in _infoStore!.separatedProperties)
-                                {
-                                    var fieldName = GetOriginName(prop);
-                                    sb.WriteLine($"if ({fieldName} is ISavable sv)");
-                                    sb.WriteLine($"    sv.SetDirty(dirty, true);");
-                                }
-                                foreach (var kvp in _infoStore!.separatedCollections)
-                                {
-                                    sb.WriteLine($"({kvp.Key} as ISavable)?.SetDirty(dirty, true);");
-                                }
+                                var fieldName = GetOriginName(prop);
+                                sb.WriteLine($"if ({fieldName} is ISavable sv)");
+                                sb.WriteLine($"    sv.SetDirty(dirty, true);");
+                            }
+                            foreach (var kvp in _infoStore!.separatedCollections)
+                            {
+                                sb.WriteLine($"({kvp.Key} as ISavable)?.SetDirty(dirty, true);");
                             }
                         }
                     }
