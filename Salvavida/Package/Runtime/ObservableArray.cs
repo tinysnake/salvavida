@@ -161,12 +161,12 @@ namespace Salvavida
 
             public bool MoveNext()
             {
-                if (_i <= _arr.Length)
+                if (_i < _arr.Length)
                 {
                     _arr[_i++] = _cur;
                     return true;
                 }
-                _i = _arr.Length + 1;
+                _i = _arr.Length;
                 _cur = default;
                 return false;
             }
@@ -329,12 +329,12 @@ namespace Salvavida
 
             public bool MoveNext()
             {
-                if (_i <= _arr.Length)
+                if (_i < _arr.Length)
                 {
                     _arr[_i++] = _cur;
                     return true;
                 }
-                _i = _arr.Length + 1;
+                _i = _arr.Length;
                 _cur = default;
                 return false;
             }
