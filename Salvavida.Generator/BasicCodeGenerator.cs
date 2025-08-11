@@ -498,9 +498,8 @@ namespace Salvavida.Generator
                         {
                             foreach (var prop in _infoStore!.separatedProperties)
                             {
-                                var fieldName = GetOriginName(prop);
-                                sb.WriteLine($"if ({fieldName} is ISavable sv)");
-                                sb.WriteLine($"    sv.SetDirty(dirty, true);");
+                                var fieldName = GetOriginName(prop); 
+                                sb.WriteLine($"({fieldName} as ISavable)?.SetDirty(dirty, true);");
                             }
                             foreach (var kvp in _infoStore!.separatedCollections)
                             {
