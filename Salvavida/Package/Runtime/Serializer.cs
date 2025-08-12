@@ -464,9 +464,8 @@ namespace Salvavida
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
 
-            using var __s = ctx.Path.UsePush(propName.Span, pathBuilderType);
+            ctx.Path.Push(propName.Span, pathBuilderType);
             var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, x), default);
-            AsyncIO.QueueJob(job);
             await job;
         }
 
@@ -500,7 +499,7 @@ namespace Salvavida
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
 
-            using var __s = ctx.Path.UsePush(propName.Span, pathBuilderType);
+            ctx.Path.Push(propName.Span, pathBuilderType);
             var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, type, x), default);
             AsyncIO.QueueJob(job);
             await job;
@@ -616,7 +615,7 @@ namespace Salvavida
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
             var ctxScope = GetContextScope(out var ctx);
-            using var __s = ctx.Path.UsePush(svid.Span, PathBuilder.Type.Property);
+            ctx.Path.Push(svid.Span, PathBuilder.Type.Property);
             var job = new AsyncValueJob<SerializeContext, T?>(ctxScope, SvHelper.GetHashCodeFromSpan(svid.Span), x => DoRead<T>(x, out _), token);
             AsyncIO.QueueJob(job);
             return await job;
