@@ -244,30 +244,17 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            var path = ctx.Path;
-            path.Push(data.SvId!, PathBuilder.Type.Property);
-            var result = Has(ctx);
-            path.Pop();
-            return result;
+
+            using var __s = ctx.Path.UsePush(data.SvId!, PathBuilder.Type.Property);
+            return Has(ctx);
         }
 
         protected abstract bool Has(SerializeContext ctx);
 
         public bool HasCollection(SerializeContext ctx, ReadOnlySpan<char> propName)
         {
-            var path = ctx.Path;
-
-            path.Push(propName, PathBuilder.Type.Collection);
-            bool result = false;
-            try
-            {
-                result = HasCollection(ctx);
-            }
-            finally
-            {
-                path.Pop();
-            }
-            return result;
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Collection);
+            return HasCollection(ctx);
         }
 
         public abstract bool HasCollection(SerializeContext ctx);
@@ -375,7 +362,8 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            ctx.Path.Push(data.SvId!, PathBuilder.Type.Collection);
+
+            using var __s = ctx.Path.UsePush(data.SvId!, PathBuilder.Type.Collection);
             try
             {
                 DoUpdateOrder(data, ctx, order);
@@ -383,10 +371,6 @@ namespace Salvavida
             catch (Exception ex)
             {
                 OnUpdateOrderFailed(ctx, ex);
-            }
-            finally
-            {
-                ctx.Path.Pop();
             }
         }
 
@@ -433,15 +417,9 @@ namespace Salvavida
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
                 throw new ArgumentNullException(nameof(savable));
-            ctx.Path.Push(savable.SvId!, type);
-            try
-            {
-                DoSaveObject(savable, ctx);
-            }
-            finally
-            {
-                ctx.Path.Pop();
-            }
+
+            using var __s = ctx.Path.UsePush(savable.SvId!, type);
+            DoSaveObject(savable, ctx);
         }
 
         public void Save<T>(ISavable parent, SerializeContext ctx, ReadOnlySpan<char> propName, T data, PathBuilder.Type pathBuilderType)
@@ -451,7 +429,8 @@ namespace Salvavida
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
             ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName, pathBuilderType);
+
+            using var __s = ctx.Path.UsePush(propName, pathBuilderType);
             DoSaveObject(data, ctx);
         }
 
@@ -462,7 +441,8 @@ namespace Salvavida
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
             ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName, pathBuilderType);
+
+            using var __s = ctx.Path.UsePush(propName, pathBuilderType);
             DoSaveObject(data, type, ctx);
         }
 
@@ -483,7 +463,8 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName.Span, pathBuilderType);
+
+            using var __s = ctx.Path.UsePush(propName.Span, pathBuilderType);
             var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, x), default);
             AsyncIO.QueueJob(job);
             await job;
@@ -496,7 +477,7 @@ namespace Salvavida
             using var locker = BeginFreshAction(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName, pathBuilderType);
+            using var __s = ctx.Path.UsePush(propName, pathBuilderType);
             DoSaveObject(data, ctx);
         }
 
@@ -518,7 +499,8 @@ namespace Salvavida
             var ctxScope = GetContextScope(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName.Span, pathBuilderType);
+
+            using var __s = ctx.Path.UsePush(propName.Span, pathBuilderType);
             var job = new AsyncVoidJob<SerializeContext>(ctxScope, data?.GetHashCode() ?? 0, x => DoSaveObject(data, type, x), default);
             AsyncIO.QueueJob(job);
             await job;
@@ -531,7 +513,8 @@ namespace Salvavida
             using var locker = BeginFreshAction(out var ctx);
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            ctx.Path.Push(propName, pathBuilderType);
+
+            using var __s = ctx.Path.UsePush(propName, pathBuilderType);
             DoSaveObject(data, type, ctx);
         }
 
@@ -539,30 +522,18 @@ namespace Salvavida
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
-            ctx.Path.Push(propName, pathBuilderType);
-            try
-            {
-                DoSaveObject(obj, ctx);
-            }
-            finally
-            {
-                ctx.Path.Pop();
-            }
+
+            using var __s = ctx.Path.UsePush(propName, pathBuilderType);
+            DoSaveObject(obj, ctx);
         }
 
         public void SaveObject<T>(T obj, Type type, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
-            ctx.Path.Push(propName, pathBuilderType);
-            try
-            {
-                DoSaveObject(obj, type, ctx);
-            }
-            finally
-            {
-                ctx.Path.Pop();
-            }
+
+            using var __s = ctx.Path.UsePush(propName, pathBuilderType);
+            DoSaveObject(obj, type, ctx);
         }
 
         private bool TryDeleteOnNull<T>(T obj, SerializeContext ctx)
@@ -635,9 +606,8 @@ namespace Salvavida
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
             using var locker = BeginFreshAction(out var ctx);
-            ctx.Path.Push(svid, PathBuilder.Type.Property);
+            using var __s = ctx.Path.UsePush(svid, PathBuilder.Type.Property);
             var result = DoRead<T>(ctx, out _);
-            ctx.Path.Pop();
             return result;
         }
 
@@ -646,7 +616,7 @@ namespace Salvavida
             if (svid.IsEmpty)
                 throw new ArgumentNullException(nameof(svid));
             var ctxScope = GetContextScope(out var ctx);
-            ctx.Path.Push(svid.Span, PathBuilder.Type.Property);
+            using var __s = ctx.Path.UsePush(svid.Span, PathBuilder.Type.Property);
             var job = new AsyncValueJob<SerializeContext, T?>(ctxScope, SvHelper.GetHashCodeFromSpan(svid.Span), x => DoRead<T>(x, out _), token);
             AsyncIO.QueueJob(job);
             return await job;
@@ -654,10 +624,8 @@ namespace Salvavida
 
         public T? ReadObject<T>(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
-            ctx.Path.Push(propName, type);
-            var result = DoRead<T>(ctx, out _);
-            ctx.Path.Pop();
-            return result;
+            using var __s = ctx.Path.UsePush(propName, type);
+            return DoRead<T>(ctx, out _);
         }
 
         protected virtual T? DoRead<T>(SerializeContext ctx) => DoRead<T>(ctx, out _);
@@ -679,32 +647,24 @@ namespace Salvavida
 
         public T?[]? ReadArray<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately)
         {
-            ctx.Path.Push(propName, PathBuilder.Type.Property);
-            var result = DoReadArray<T>(ctx, saveSeparately);
-            ctx.Path.Pop();
-            return result;
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            return DoReadArray<T>(ctx, saveSeparately);
         }
 
         protected abstract T?[]? DoReadArray<T>(SerializeContext ctx, bool saveSeparately);
 
         public List<T?>? ReadList<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately)
         {
-            var path = ctx.Path;
-            path.Push(propName, PathBuilder.Type.Property);
-            var result = DoReadList<T>(ctx, saveSeparately);
-            path.Pop();
-            return result;
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            return DoReadList<T>(ctx, saveSeparately);
         }
 
         protected abstract List<T?>? DoReadList<T>(SerializeContext ctx, bool saveSeparately);
 
         public Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately)
         {
-            var path = ctx.Path;
-            path.Push(propName, PathBuilder.Type.Property);
-            var result = DoReadDict<TKey, TValue>(ctx, saveSeparately);
-            path.Pop();
-            return result;
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            return DoReadDict<TKey, TValue>(ctx, saveSeparately);
         }
 
         protected abstract Dictionary<TKey, TValue?>? DoReadDict<TKey, TValue>(SerializeContext ctx, bool saveSeparately);
@@ -760,8 +720,8 @@ namespace Salvavida
         {
             if (data == null || string.IsNullOrEmpty(data.SvId))
                 throw new ArgumentNullException(nameof(data));
-            var path = ctx.Path;
-            path.Push(data.SvId!, type);
+
+            using var __s = ctx.Path.UsePush(data.SvId!, type);
             try
             {
                 DoDelete(ctx);
@@ -769,10 +729,6 @@ namespace Salvavida
             catch (Exception ex)
             {
                 OnDeleteFailed(ctx, ex);
-            }
-            finally
-            {
-                path.Pop();
             }
         }
 
@@ -780,8 +736,7 @@ namespace Salvavida
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
-            var path = ctx.Path;
-            path.Push(propName, type);
+            using var __s = ctx.Path.UsePush(propName, type);
             try
             {
                 DoDelete(ctx);
@@ -789,10 +744,6 @@ namespace Salvavida
             catch (Exception ex)
             {
                 OnDeleteFailed(ctx, ex);
-            }
-            finally
-            {
-                path.Pop();
             }
         }
 
@@ -838,30 +789,14 @@ namespace Salvavida
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
                 throw new ArgumentNullException(nameof(savable));
-            var path = ctx.Path;
-            path.Push(savable.SvId!, type);
-            try
-            {
-                DeleteAll(ctx);
-            }
-            finally
-            {
-                path.Pop();
-            }
+            using var __s = ctx.Path.UsePush(savable.SvId!, type);
+            DeleteAll(ctx);
         }
 
         public void DeleteAll(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
-            var path = ctx.Path;
-            path.Push(propName, type);
-            try
-            {
-                DeleteAll(ctx);
-            }
-            finally
-            {
-                path.Pop();
-            }
+            using var __s = ctx.Path.UsePush(propName, type);
+            DeleteAll(ctx);
         }
 
         public void DeleteAll(SerializeContext ctx)

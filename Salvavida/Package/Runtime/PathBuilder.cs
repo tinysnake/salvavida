@@ -12,6 +12,26 @@ namespace Salvavida
             Collection
         }
 
+        public struct PushScope : IDisposable
+        {
+            public PushScope(PathBuilder builder, ReadOnlySpan<char> segment, Type type)
+            {
+                _pb = builder;
+                _pb.Push(segment, type);
+            }
+
+            private PathBuilder _pb;
+
+            public void Dispose()
+            {
+                if (_pb != null)
+                {
+                    _pb.Pop();
+                    _pb = null;
+                }
+            }
+        }
+
         public readonly struct PathSegment
         {
             public PathSegment(Type type, int start, int end)
@@ -56,6 +76,12 @@ namespace Salvavida
         public int SegmentCount => _segments.Count;
 
         public int MaxLength => _memory.Length;
+
+        public PushScope UsePush(ReadOnlySpan<char> segment, Type type)
+        {
+            var scope = new PushScope(this, segment, type);
+            return scope;
+        }
 
         public PathBuilder Push(ReadOnlySpan<char> segment, Type type)
         {
