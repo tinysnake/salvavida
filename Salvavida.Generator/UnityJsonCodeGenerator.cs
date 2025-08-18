@@ -17,55 +17,51 @@ namespace Salvavida.Generator
             return attr != null;
         }
 
-        protected override void HandleField(ScriptBuilder sb, FieldDeclarationSyntax field, CodeGenerationContext ctx)
+        protected override void HandleField(ScriptBuilder sb, IFieldSymbol field, CodeGenerationContext ctx)
         {
-            AttributeSyntax? nonSerializedAttr = null;
-            AttributeSyntax? serializeFieldAttr = null;
-            AttributeSyntax? ignoreAttr = null;
-            AttributeSyntax? saveSeparatelyAttr = null;
-            foreach (var attrList in field.AttributeLists)
+            AttributeData? nonSerializedAttr = null;
+            AttributeData? serializeFieldAttr = null;
+            AttributeData? ignoreAttr = null;
+            AttributeData? saveSeparatelyAttr = null;
+            foreach (var attr in field.GetAttributes())
             {
-                foreach (var attr in attrList.Attributes)
+                var attrName = attr.AttributeClass!.ToDisplayString();
+                switch (attrName)
                 {
-                    if (ctx.SemanticModel.GetSymbolInfo(attr).Symbol is not IMethodSymbol attrSymbol)
-                        continue;
-                    var attrName = attrSymbol.ContainingType.ToDisplayString();
-                    switch (attrName)
-                    {
-                        case NON_SERIALIZE_ATTRIBUTE:
-                            nonSerializedAttr = attr;
-                            break;
-                        case SERIALIZE_FIELD_ATTRIBUTE:
-                            serializeFieldAttr = attr;
-                            break;
-                        case CodeGenHelper.IGNORE_ATTRIBUTE_NAME:
-                            ignoreAttr = attr;
-                            break;
-                        case CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME:
-                            saveSeparatelyAttr = attr;
-                            break;
-                    }
+                    case NON_SERIALIZE_ATTRIBUTE:
+                        nonSerializedAttr = attr;
+                        break;
+                    case SERIALIZE_FIELD_ATTRIBUTE:
+                        serializeFieldAttr = attr;
+                        break;
+                    case CodeGenHelper.IGNORE_ATTRIBUTE_NAME:
+                        ignoreAttr = attr;
+                        break;
+                    case CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME:
+                        saveSeparatelyAttr = attr;
+                        break;
                 }
             }
 
             if (nonSerializedAttr != null && saveSeparatelyAttr == null)
                 return;
 
-            if (field.Modifiers.Any(modifer => modifer.IsKind(SyntaxKind.PublicKeyword)))
+            var location = field.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation();
+            if (field.DeclaredAccessibility == Accessibility.Public)
             {
                 if (saveSeparatelyAttr != null)
                 {
                     if (nonSerializedAttr == null)
                     {
                         ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UJ_NonSerializedAttributeRequired,
-                            field.Declaration.GetLocation(), field.Declaration.Variables.ToString()));
+                            location, field.Name));
                         return;
                     }
                 }
                 else
                 {
                     ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UJ_PrivateKeywoardRecommended,
-                        field.Declaration.GetLocation(), field.Declaration.Variables.ToString()));
+                        location, field.Name));
                 }
             }
             else
@@ -75,7 +71,7 @@ namespace Salvavida.Generator
                     if (serializeFieldAttr != null)
                     {
                         ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UJ_HaveToRemoveSerializeFieldAttribute,
-                            field.Declaration.GetLocation(), field.Declaration.Variables.ToString()));
+                            location, field.Name));
                         return;
                     }
                 }
@@ -86,16 +82,18 @@ namespace Salvavida.Generator
                         if (ignoreAttr == null)
                         {
                             ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.UJ_ForgetSerializerFieldAttribute,
-                                field.Declaration.GetLocation(), field.Declaration.Variables.ToString()));
+                                location, field.Name));
                         }
+
                         return;
                     }
                 }
             }
+
             base.HandleField(sb, field, ctx);
         }
 
-        protected override void HandleProperty(ScriptBuilder sb, PropertyDeclarationSyntax prop, CodeGenerationContext ctx)
+        protected override void HandleProperty(ScriptBuilder sb, IPropertySymbol prop, CodeGenerationContext ctx)
         {
             //UnityJsonUtility不支持属性
         }

@@ -3,6 +3,8 @@ obj/
 .vs/
 .vscode/
 .idea/
+.DS_Store
+*.user
 /*.meta
 
 Salvavida.Generator.Debug/salvavida.output.log

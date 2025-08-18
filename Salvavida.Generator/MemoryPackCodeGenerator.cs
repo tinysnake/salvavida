@@ -17,81 +17,75 @@ namespace Salvavida.Generator
             return attr != null;
         }
 
-        protected override void HandleField(ScriptBuilder sb, FieldDeclarationSyntax field, CodeGenerationContext ctx)
+        protected override void HandleField(ScriptBuilder sb, IFieldSymbol field, CodeGenerationContext ctx)
         {
-            AttributeSyntax? includeAttr = null;
-            AttributeSyntax? mpIgnoreAttr = null;
-            AttributeSyntax? svIgnoreAttr = null;
-            AttributeSyntax? saveSeparatelyAttr = null;
-            foreach (var attrList in field.AttributeLists)
+            AttributeData? includeAttr = null;
+            AttributeData? mpIgnoreAttr = null;
+            AttributeData? svIgnoreAttr = null;
+            AttributeData? saveSeparatelyAttr = null;
+
+            foreach (var attrData in field.GetAttributes())
             {
-                foreach (var attr in attrList.Attributes)
+                var attr = attrData.AttributeClass;
+                var attrName = attr!.ToDisplayString();
+                switch (attrName)
                 {
-                    if (ctx.SemanticModel.GetSymbolInfo(attr).Symbol is not IMethodSymbol attrSymbol)
-                        continue;
-                    var attrName = attrSymbol.ContainingType.ToDisplayString();
-                    switch (attrName)
-                    {
-                        case MP_INCLUDE_ATTRIBUTE:
-                            includeAttr = attr;
-                            break;
-                        case MP_IGNORE_ATTRIBUTE:
-                            mpIgnoreAttr = attr;
-                            break;
-                        case CodeGenHelper.IGNORE_ATTRIBUTE_NAME:
-                            svIgnoreAttr = attr;
-                            break;
-                        case CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME:
-                            saveSeparatelyAttr = attr;
-                            break;
-                    }
+                    case MP_INCLUDE_ATTRIBUTE:
+                        includeAttr = attrData;
+                        break;
+                    case MP_IGNORE_ATTRIBUTE:
+                        mpIgnoreAttr = attrData;
+                        break;
+                    case CodeGenHelper.IGNORE_ATTRIBUTE_NAME:
+                        svIgnoreAttr = attrData;
+                        break;
+                    case CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME:
+                        saveSeparatelyAttr = attrData;
+                        break;
                 }
             }
-            if (CheckHasProblem(ctx, field, field.Declaration.GetLocation(), field.Declaration.Variables.ToString(),
-                includeAttr, mpIgnoreAttr, saveSeparatelyAttr))
+
+            if (CheckHasProblem(ctx, field, field.Name, includeAttr, mpIgnoreAttr, saveSeparatelyAttr))
                 return;
             base.HandleField(sb, field, ctx);
         }
 
-        protected override void HandleProperty(ScriptBuilder sb, PropertyDeclarationSyntax prop, CodeGenerationContext ctx)
+        protected override void HandleProperty(ScriptBuilder sb, IPropertySymbol prop, CodeGenerationContext ctx)
         {
-            AttributeSyntax? includeAttr = null;
-            AttributeSyntax? mpIgnoreAttr = null;
-            AttributeSyntax? saveSeparatelyAttr = null;
-            foreach (var attrList in prop.AttributeLists)
+            AttributeData? includeAttr = null;
+            AttributeData? mpIgnoreAttr = null;
+            AttributeData? saveSeparatelyAttr = null;
+            foreach (var attr in prop.GetAttributes())
             {
-                foreach (var attr in attrList.Attributes)
+                var attrName = attr.AttributeClass!.ToDisplayString();
+                switch (attrName)
                 {
-                    if (ctx.SemanticModel.GetSymbolInfo(attr).Symbol is not IMethodSymbol attrSymbol)
-                        continue;
-                    var attrName = attrSymbol.ContainingType.ToDisplayString();
-                    switch (attrName)
-                    {
-                        case MP_INCLUDE_ATTRIBUTE:
-                            includeAttr = attr;
-                            break;
-                        case MP_IGNORE_ATTRIBUTE:
-                            mpIgnoreAttr = attr;
-                            break;
-                        case CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME:
-                            saveSeparatelyAttr = attr;
-                            break;
-                    }
+                    case MP_INCLUDE_ATTRIBUTE:
+                        includeAttr = attr;
+                        break;
+                    case MP_IGNORE_ATTRIBUTE:
+                        mpIgnoreAttr = attr;
+                        break;
+                    case CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME:
+                        saveSeparatelyAttr = attr;
+                        break;
                 }
             }
-            if (CheckHasProblem(ctx, prop, prop.Identifier.GetLocation(), prop.Identifier.ToString(),
-                includeAttr, mpIgnoreAttr, saveSeparatelyAttr))
+
+            if (CheckHasProblem(ctx, prop, prop.Name, includeAttr, mpIgnoreAttr, saveSeparatelyAttr))
                 return;
             base.HandleProperty(sb, prop, ctx);
         }
 
-        private bool CheckHasProblem(CodeGenerationContext ctx, MemberDeclarationSyntax member, Location problematicLocation, string name,
-            AttributeSyntax? includeAttr, AttributeSyntax? mpIgnoreAttr, AttributeSyntax? saveSeparatelyAttr)
+        private bool CheckHasProblem(CodeGenerationContext ctx, ISymbol member, string name,
+            AttributeData? includeAttr, AttributeData? mpIgnoreAttr, AttributeData? saveSeparatelyAttr)
         {
             if (mpIgnoreAttr != null && saveSeparatelyAttr == null)
                 return true;
 
-            if (member.Modifiers.Any(mod => mod.IsKind(SyntaxKind.PublicKeyword)))
+            var problematicLocation = member.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation();
+
+            if (member.DeclaredAccessibility == Accessibility.Public)
             {
                 if (saveSeparatelyAttr != null)
                 {
@@ -128,10 +122,12 @@ namespace Salvavida.Generator
                             ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MP_ForgetMemoryPackableIncludeAttribute,
                                 problematicLocation, name));
                         }
+
                         return true;
                     }
                 }
             }
+
             return false;
         }
 

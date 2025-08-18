@@ -6,6 +6,20 @@ using UnityEngine;
 
 namespace Salvavida.Generator.Debug
 {
+    public class TestBaseClass
+    {
+        [SerializeField]
+        protected string _field1;
+    }
+
+    [Savable(IsRootObject = true)]
+    [Serializable]
+    public partial class TestClass : TestBaseClass
+    {
+        [SerializeField]
+        private string _field2;
+    }
+    
     [Savable]
     [MemoryPackable]
     public partial class MemPacker

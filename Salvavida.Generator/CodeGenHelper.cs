@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
+using System.Collections.Immutable;
 using System.Linq;
 
 namespace Salvavida.Generator
@@ -13,6 +14,8 @@ namespace Salvavida.Generator
         public const string SAVABLE_ATTRIBUTE_NAME = "Salvavida.SavableAttribute";
         public const string CLASS_NAME_SYSTEM_OBJECT = "object";
         public const string INTERFACE_NAME_ISAVABLE = "Salvavida.ISavable";
+        public const string INTERFACE_NAME_ISERIALIZEROOT = "Salvavida.ISerializeRoot";
+
         public static bool IsOrderedClass(CodeGenerationContext ctx)
         {
             var salvavidaAttr = ctx.TypeSymbol.GetAttributes().Where(ad => ad.AttributeClass?.ToDisplayString() == SalvavidaGenerator.SALVAVIDA_ATTRIBUTE).First();
@@ -23,6 +26,7 @@ namespace Salvavida.Generator
                     return true;
                 }
             }
+
             return false;
         }
 
@@ -65,6 +69,7 @@ namespace Salvavida.Generator
                         return attr;
                 }
             }
+
             return null;
         }
 
@@ -82,36 +87,38 @@ namespace Salvavida.Generator
                         return attrNode;
                 }
             }
+
             return null;
         }
 
-        public static CollectionType GetCollectionType(CodeGenerationContext ctx, TypeSyntax typeSyntax, ref ITypeSymbol typeSymbol, out ISymbol[]? elemTypeSymbols)
+        public static CollectionType GetCollectionType(CodeGenerationContext ctx, ITypeSymbol typeSymbol, out ImmutableArray<ITypeSymbol> elemTypeSymbols)
         {
-            typeSymbol ??= (ctx.SemanticModel.GetSymbolInfo(typeSyntax).Symbol as ITypeSymbol) ?? throw new System.InvalidCastException("targetSyntax is not a typeSyntax");
-            if (typeSyntax is ArrayTypeSyntax ats)
+            if (typeSymbol is IArrayTypeSymbol arrayTypeSymbol)
             {
-                elemTypeSymbols = new[] { ctx.SemanticModel.GetSymbolInfo(ats.ElementType).Symbol }!;
+                elemTypeSymbols = new[] { arrayTypeSymbol.ElementType }.ToImmutableArray();
                 return CollectionType.Array;
             }
-            else if (typeSyntax is GenericNameSyntax gns)
+            else if (typeSymbol is INamedTypeSymbol namedTypeSymbol && namedTypeSymbol.IsGenericType)
             {
-                var nameSpace = typeSymbol.ContainingSymbol.ToDisplayString();
-                var typeName = typeSymbol.Name;
+                var nameSpace = namedTypeSymbol.ContainingNamespace.ToDisplayString();
+                var typeName = namedTypeSymbol.Name;
                 if (nameSpace == "System.Collections.Generic")
                 {
+                    elemTypeSymbols = namedTypeSymbol.TypeArguments;
+
                     if (typeName == "List")
                     {
-                        elemTypeSymbols = new[] { ctx.SemanticModel.GetSymbolInfo(gns.TypeArgumentList.Arguments[0]).Symbol }!;
                         return CollectionType.List;
                     }
+
                     if (typeName == "Dictionary")
                     {
-                        elemTypeSymbols = gns.TypeArgumentList.Arguments.Select(arg => ctx.SemanticModel.GetSymbolInfo(arg).Symbol).ToArray()!;
                         return CollectionType.Dictionary;
                     }
                 }
             }
-            elemTypeSymbols = null;
+
+            elemTypeSymbols = ImmutableArray<ITypeSymbol>.Empty;
             return CollectionType.None;
         }
 
@@ -132,6 +139,7 @@ namespace Salvavida.Generator
                 if (inf.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == INTERFACE_NAME_ISAVABLE)
                     return true;
             }
+
             var parent = typeSymbol;
             while (parent != null)
             {
@@ -141,18 +149,51 @@ namespace Salvavida.Generator
                     return true;
                 parent = parent.BaseType;
             }
+
             return false;
         }
 
         private static bool GetIsSavableSingle(ITypeSymbol typeSymbol)
         {
-            var attrs = typeSymbol.GetAttributes();
-            foreach (var ad in attrs)
+            var attrDatas = typeSymbol.GetAttributes();
+            foreach (var attrData in attrDatas)
             {
-                if (ad.AttributeClass?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == SAVABLE_ATTRIBUTE_NAME)
+                if (attrData.AttributeClass?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == SAVABLE_ATTRIBUTE_NAME)
                     return true;
             }
+
             return false;
+        }
+
+        public static bool GetIsSavableRoot(ITypeSymbol typeSymbol, bool codeGenCheckOnly)
+        {
+            var attrDatas = typeSymbol.GetAttributes();
+            foreach (var attrData in attrDatas)
+            {
+                if (attrData.AttributeClass?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == SAVABLE_ATTRIBUTE_NAME)
+                {
+                    foreach (var namedArg in attrData.NamedArguments)
+                    {
+                        var name = namedArg.Key;
+                        var type = namedArg.Value;
+                        if (name == "IsRootObject")
+                            return type.Value != null && (bool)type.Value;
+                    }
+                }
+            }
+            return !codeGenCheckOnly && GetIsAlreadySavableRoot(typeSymbol);
+        }
+
+        public static bool GetIsAlreadySavableRoot(ITypeSymbol typeSymbol)
+        {
+            var parent = typeSymbol?.BaseType;
+            return parent?.AllInterfaces.Any(i => i.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) == INTERFACE_NAME_ISERIALIZEROOT) ?? false;
+        }
+
+        public static bool GetHasBaseClasse(ITypeSymbol typeSymbol)
+        {
+            var parent = typeSymbol?.BaseType;
+            return parent != null && parent.SpecialType != SpecialType.System_Object;
         }
     }
 }

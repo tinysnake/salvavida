@@ -1,19 +1,24 @@
 using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace Salvavida.Generator
 {
     public class CodeGenInfoStore
     {
-        public string className;
+        public string? className;
         public readonly HashSet<string> existingPropertyNames = new();
         public readonly Dictionary<string, bool> separatedCollections = new();
         public readonly HashSet<string> separatedProperties = new();
         public readonly HashSet<string> internalSeparatedMembers = new();
         public readonly Dictionary<string, string> nameMappings = new();
         public readonly Dictionary<string, ITypeSymbol> propTypeMappings = new();
-        public readonly Dictionary<string, (CollectionType, ISymbol[])> collectionParameterMappings = new();
-        public readonly Dictionary<ITypeSymbol, bool> savableTypes = new();
+        public readonly Dictionary<string, (CollectionType, ImmutableArray<ITypeSymbol>)> collectionParameterMappings = new();
+        public readonly Dictionary<ITypeSymbol, bool> savableTypes = new(SymbolEqualityComparer.Default);
         public bool isOrderedClass;
+        /// <summary>
+        /// 0 = no generate, 1 = generate by inheritance 2 = generate by implementing
+        /// </summary>
+        public int generateSerializeRootMode;
     }
 }

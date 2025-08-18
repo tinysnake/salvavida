@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -18,6 +18,13 @@ namespace Salvavida.Generator
         {
             _infoStore = new CodeGenInfoStore();
             _infoStore.isOrderedClass = CodeGenHelper.IsOrderedClass(ctx);
+            var alreadySR = CodeGenHelper.GetIsAlreadySavableRoot(ctx.TypeSymbol);
+            if (!alreadySR && CodeGenHelper.GetIsSavableRoot(ctx.TypeSymbol, true))
+            {
+                if (CodeGenHelper.GetHasBaseClasse(ctx.TypeSymbol))
+                    _infoStore.generateSerializeRootMode++;
+                _infoStore.generateSerializeRootMode++;
+            }
             try
             {
                 var sb = new ScriptBuilder();
@@ -68,242 +75,203 @@ namespace Salvavida.Generator
         {
             var className = ctx.TypeSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
             _infoStore!.className = className;
-            sb.Write($"partial class {className} : ISavable<{className}>");
+
+            sb.Write($"sealed partial class {className} : ");
+            if (_infoStore!.generateSerializeRootMode > 0)
+            {
+                if (_infoStore!.generateSerializeRootMode == 1)
+                    sb.Write("Salvavida.DefaultImpl.SerializeRoot, ", true);
+                else
+                {
+                    sb.Write(CodeGenHelper.INTERFACE_NAME_ISERIALIZEROOT, true);
+                    sb.Write(", ", true);
+                }
+            }
+            sb.Write($"ISavable<{className}>", true);
             if (_infoStore!.isOrderedClass)
-                sb.Write($", ISaveWithOrder", true);
+                sb.Write(", ISaveWithOrder", true);
             sb.WriteLine();
             sb.BeginCurlyBrackets();
         }
 
-        protected virtual void WriteUsings(ScriptBuilder sb, CodeGenerationContext ctx) { }
+        protected virtual void WriteUsings(ScriptBuilder sb, CodeGenerationContext ctx)
+        {
+        }
 
-        protected virtual void BeforeWriteNamespace(ScriptBuilder sb, CodeGenerationContext ctx) { }
+        protected virtual void BeforeWriteNamespace(ScriptBuilder sb, CodeGenerationContext ctx)
+        {
+        }
 
-        protected virtual void BeforeWriteClass(ScriptBuilder sb, CodeGenerationContext ctx) { }
+        protected virtual void BeforeWriteClass(ScriptBuilder sb, CodeGenerationContext ctx)
+        {
+        }
 
         protected virtual void WriteClassBody(ScriptBuilder sb, CodeGenerationContext ctx)
         {
             WriteImplementationsHead(sb, ctx);
-            var members = ctx.ClassNode.Members;
-
-            foreach (var member in members)
+            var typeSymbol = ctx.TypeSymbol;
+            var membersList = new List<ISymbol>();
+            ITypeSymbol? parentType = typeSymbol;
+            var i = 0;
+            while (parentType != null)
             {
-                if (member is FieldDeclarationSyntax fieldSyntax)
+                IEnumerable<ISymbol> mems = parentType.GetMembers();
+                if (i++ > 0)
+                    mems = mems.Where(x => x.DeclaredAccessibility != Accessibility.Private);
+                foreach (var mem in mems)
                 {
-                    foreach (var name in fieldSyntax.Declaration.Variables.Select(v => v.Identifier.ToString()))
-                    {
-                        _infoStore!.existingPropertyNames.Add(name);
-                    }
+                    membersList.Add(mem);
+                    _infoStore!.existingPropertyNames.Add(mem.Name);
                 }
-                else if (member is PropertyDeclarationSyntax propSyntax)
-                {
-                    _infoStore!.existingPropertyNames.Add(propSyntax.Identifier.ToString());
-                }
-                else if (member is MethodDeclarationSyntax methodSyntax)
-                {
-                    _infoStore!.existingPropertyNames.Add(methodSyntax.Identifier.ToString());
-                }
-                else if (member is DelegateDeclarationSyntax delegateSyntax)
-                {
-                    _infoStore!.existingPropertyNames.Add(delegateSyntax.Identifier.ToString());
-                }
-                else if (member is TypeDeclarationSyntax typeDeclaration)
-                {
-                    _infoStore!.existingPropertyNames.Add(typeDeclaration.Identifier.ToString());
-                }
-                else if (member is EnumDeclarationSyntax enumDeclaration)
-                {
-                    _infoStore!.existingPropertyNames.Add(enumDeclaration.Identifier.ToString());
-                }
-                else if (member is NamespaceDeclarationSyntax nsDeclaration)
-                {
-                    _infoStore!.existingPropertyNames.Add(nsDeclaration.Name.ToString());
-                }
+                parentType = parentType.BaseType;
             }
 
+            var allMembers = membersList.ToImmutableArray();
 
-            foreach (var member in members)
+            foreach (var member in allMembers)
             {
-                if (member is not FieldDeclarationSyntax fieldSyntax)
+                if (member is not IFieldSymbol fieldSymbol)
                     continue;
-                HandleField(sb, fieldSyntax, ctx);
+                HandleField(sb, fieldSymbol, ctx);
             }
 
-            foreach (var member in members)
+            foreach (var member in allMembers)
             {
-                if (member is not PropertyDeclarationSyntax propSyntax)
+                if (member is not IPropertySymbol propSymbol)
                     continue;
-                HandleProperty(sb, propSyntax, ctx);
+                HandleProperty(sb, propSymbol, ctx);
             }
 
-            foreach (var member in members)
+            foreach (var member in allMembers)
             {
-                if (member is not MethodDeclarationSyntax methodSyntax)
+                if (member is not IMethodSymbol methodSymbol)
                     continue;
-                HandleMethod(sb, methodSyntax, ctx);
+                HandleMethod(sb, methodSymbol, ctx);
             }
 
             WriteImplementationsFoot(sb, ctx);
         }
 
-        protected virtual void HandleField(ScriptBuilder sb, FieldDeclarationSyntax field, CodeGenerationContext ctx)
+        protected virtual void HandleField(ScriptBuilder sb, IFieldSymbol field, CodeGenerationContext ctx)
         {
-            var type = field.Declaration.Type;
-            var fieldNames = field.Declaration.Variables.Select(f => f.Identifier).ToImmutableArray();
-            HandleFieldOrProp(sb, field, type, fieldNames, ctx);
+            if (field.IsReadOnly || field.IsAbstract || field.IsConst || field.IsStatic)
+                return;
+            HandleFieldOrProp(sb, field, ctx);
         }
 
-        protected virtual void HandleProperty(ScriptBuilder sb, PropertyDeclarationSyntax prop, CodeGenerationContext ctx)
+        protected virtual void HandleProperty(ScriptBuilder sb, IPropertySymbol prop, CodeGenerationContext ctx)
         {
-            var accessors = prop.AccessorList?.Accessors;
-            if (accessors == null)
+            if (prop.IsReadOnly || prop.IsIndexer || prop.IsWriteOnly || prop.IsAbstract || prop.IsStatic)
                 return;
-            bool emptyBody = true;
-            bool hasGetter = false;
-            bool hasSetter = false;
-            foreach (var accessor in accessors!)
-            {
-                if (!hasGetter)
-                    hasGetter |= accessor.IsKind(SyntaxKind.GetAccessorDeclaration);
-                if (!hasSetter)
-                    hasSetter |= accessor.IsKind(SyntaxKind.SetAccessorDeclaration);
-                emptyBody &= accessor.Body == null;
-            }
-            if (!emptyBody)
-                return;
-            if (!hasGetter || !hasSetter)
-                return;
-            var arr = ImmutableArray.Create(prop.Identifier);
-            HandleFieldOrProp(sb, prop, prop.Type, arr, ctx);
+            HandleFieldOrProp(sb, prop, ctx);
         }
 
-        protected void HandleFieldOrProp(ScriptBuilder sb, MemberDeclarationSyntax member, TypeSyntax type, ImmutableArray<SyntaxToken> names, CodeGenerationContext ctx)
+        protected void HandleFieldOrProp(ScriptBuilder sb, ISymbol symbol, CodeGenerationContext ctx)
         {
-            foreach (var modifier in member.Modifiers)
+            AttributeData? propNameAttr = null;
+            AttributeData? ignoreAttr = null;
+            AttributeData? saveSeparatelyAttr = null;
+
+            var attrs = symbol.GetAttributes();
+
+            foreach (var attrData in attrs)
             {
-                if (modifier.IsKind(SyntaxKind.ReadOnlyKeyword))
-                    return;
-                if (modifier.IsKind(SyntaxKind.StaticKeyword))
-                    return;
-            }
-
-            AttributeSyntax? propNameAttr = null;
-            AttributeSyntax? ignoreAttr = null;
-            AttributeSyntax? saveSeparatelyAttr = null;
-
-            foreach (var attrList in member.AttributeLists)
-            {
-                foreach (var attr in attrList.Attributes)
-                {
-                    if (ctx.SemanticModel.GetSymbolInfo(attr).Symbol is not IMethodSymbol attrSymbol)
-                        continue;
-                    var attrName = attrSymbol.ContainingType.ToDisplayString();
-                    if (attrName == CodeGenHelper.PROPERTY_NAME_ATTRIBUTE_NAME)
-                        propNameAttr = attr;
-                    else if (attrName == CodeGenHelper.IGNORE_ATTRIBUTE_NAME)
-                        ignoreAttr = attr;
-                    else if (attrName == CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME)
-                        saveSeparatelyAttr = attr;
-
-                }
+                var attrSymbol = attrData.AttributeClass!;
+                var attrName = attrSymbol.ToDisplayString();
+                if (attrName == CodeGenHelper.PROPERTY_NAME_ATTRIBUTE_NAME)
+                    propNameAttr = attrData;
+                else if (attrName == CodeGenHelper.IGNORE_ATTRIBUTE_NAME)
+                    ignoreAttr = attrData;
+                else if (attrName == CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME)
+                    saveSeparatelyAttr = attrData;
             }
 
             if (ignoreAttr != null)
                 return;
 
-            if (names.Length > 1 && propNameAttr != null)
-            {
-                ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PropertyNameAttributeNotSupported, propNameAttr.GetLocation()));
-                return;
-            }
-
             string? attrPropName = null;
             if (propNameAttr != null)
             {
-                var argSyntax = propNameAttr.ArgumentList!.Arguments.ElementAt(0);
-                if (argSyntax.Expression is not LiteralExpressionSyntax literalSyntax || !literalSyntax.IsKind(SyntaxKind.StringLiteralExpression))
-                {
-                    ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CantResolvePropetyName, propNameAttr.GetLocation()));
-                    return;
-                }
-                else
-                    attrPropName = literalSyntax.Token.ValueText;
+                var nameArg = propNameAttr.ConstructorArguments[0];
+                attrPropName = nameArg.Value as string;
             }
 
-            foreach (var fieldNameSyntax in names)
+            var fieldName = symbol.Name;
+            if (string.IsNullOrEmpty(fieldName))
+                return;
+            string propertyName;
+            if (string.IsNullOrEmpty(attrPropName))
             {
-                var fieldName = fieldNameSyntax.ValueText;
-                if (string.IsNullOrEmpty(fieldName))
-                    continue;
-                string propertyName;
-                if (string.IsNullOrEmpty(attrPropName))
+                var tempName = CodeGenHelper.GetPropertyName(fieldName.AsSpan());
+                if (string.IsNullOrEmpty(tempName))
                 {
-                    var tempName = CodeGenHelper.GetPropertyName(fieldName.AsSpan());
-                    if (string.IsNullOrEmpty(tempName))
-                    {
-                        ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidMemberName,
-                            fieldNameSyntax.GetLocation(), fieldName));
-                        return;
-                    }
-                    else
-                        propertyName = tempName!;
-                }
-                else
-                {
-                    propertyName = attrPropName!;
-                }
-
-                var templateIndex = 0;
-                while (_infoStore!.existingPropertyNames.Contains(propertyName))
-                {
-                    if (templateIndex >= AlternateNameTemplates.Length)
-                    {
-                        ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.AllCandidateNamesAreUnavailable,
-                            fieldNameSyntax.GetLocation(), fieldName));
-                        return;
-                    }
-                    propertyName = string.Format(AlternateNameTemplates[templateIndex++], propertyName);
-                }
-
-                _infoStore!.existingPropertyNames.Add(propertyName);
-
-
-                if (ctx.SemanticModel.GetSymbolInfo(type).Symbol is not ITypeSymbol typeSymbol)
+                    ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidMemberName,
+                        propNameAttr!.ApplicationSyntaxReference?.GetSyntax().GetLocation(), fieldName));
                     return;
-
-                var collectionType = CodeGenHelper.GetCollectionType(ctx, type, ref typeSymbol, out var elemTypeSymbols);
-                var saveSeparately = saveSeparatelyAttr != null;
-                _infoStore!.nameMappings[fieldName] = propertyName;
-                if (collectionType == CollectionType.None)
-                {
-                    _infoStore.propTypeMappings[fieldName] = typeSymbol;
-                    if (saveSeparately)
-                    {
-                        _infoStore!.separatedProperties.Add(propertyName);
-                        _infoStore!.internalSeparatedMembers.Add(fieldName);
-                    }
-                    WriteProperty(sb, ctx, propertyName, fieldName, typeSymbol, saveSeparately);
                 }
                 else
+                    propertyName = tempName!;
+            }
+            else
+            {
+                propertyName = attrPropName!;
+            }
+
+            var templateIndex = 0;
+            while (_infoStore!.existingPropertyNames.Contains(propertyName))
+            {
+                if (templateIndex >= AlternateNameTemplates.Length)
                 {
-                    _infoStore!.collectionParameterMappings[fieldName] = (collectionType, elemTypeSymbols!);
-                    if (saveSeparately)
-                    {
-                        //var savableElement = CodeGenHelper.TryGetAttribute(ctx, , SalvavidaGenerator.SALVAVIDA_ATTRIBUTE)
-                        // TODO: to check if elemTypeSymbols.Last() implemented ISavable or not
-                        _infoStore!.separatedCollections.Add(propertyName, false);
-                        _infoStore!.internalSeparatedMembers.Add(fieldName);
-                    }
-                    var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols!);
-                    WriteCollectionProperty(sb, ctx, propertyName, fieldName,
-                        typeSymbol, collectionTypeString, saveSeparately);
+                    ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.AllCandidateNamesAreUnavailable,
+                        symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation(), fieldName));
+                    return;
                 }
+
+                propertyName = string.Format(AlternateNameTemplates[templateIndex++], propertyName);
+            }
+
+            _infoStore!.existingPropertyNames.Add(propertyName);
+
+            var typeSymbol = symbol switch
+            {
+                IFieldSymbol fs => fs.Type,
+                IPropertySymbol ps => ps.Type,
+                _ => throw new NotSupportedException(symbol.GetType().Name)
+            };
+
+            var collectionType = CodeGenHelper.GetCollectionType(ctx, typeSymbol, out var elemTypeSymbols);
+            var saveSeparately = saveSeparatelyAttr != null;
+            _infoStore!.nameMappings[fieldName] = propertyName;
+            if (collectionType == CollectionType.None)
+            {
+                _infoStore.propTypeMappings[fieldName] = typeSymbol;
+                if (saveSeparately)
+                {
+                    _infoStore!.separatedProperties.Add(propertyName);
+                    _infoStore!.internalSeparatedMembers.Add(fieldName);
+                }
+
+                WriteProperty(sb, ctx, propertyName, fieldName, typeSymbol, saveSeparately);
+            }
+            else
+            {
+                _infoStore!.collectionParameterMappings[fieldName] = (collectionType, elemTypeSymbols);
+                if (saveSeparately)
+                {
+                    //var savableElement = CodeGenHelper.TryGetAttribute(ctx, , SalvavidaGenerator.SALVAVIDA_ATTRIBUTE)
+                    // TODO: to check if elemTypeSymbols.Last() implemented ISavable or not
+                    _infoStore!.separatedCollections.Add(propertyName, false);
+                    _infoStore!.internalSeparatedMembers.Add(fieldName);
+                }
+
+                var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols);
+                WriteCollectionProperty(sb, ctx, propertyName, fieldName,
+                    typeSymbol, collectionTypeString, saveSeparately);
             }
         }
 
-        protected virtual void HandleMethod(ScriptBuilder sb, MethodDeclarationSyntax method, CodeGenerationContext ctx)
+        protected virtual void HandleMethod(ScriptBuilder sb, IMethodSymbol method, CodeGenerationContext ctx)
         {
-
         }
 
         protected bool IsTypeISavable(ITypeSymbol typeSymbol)
@@ -313,6 +281,7 @@ namespace Salvavida.Generator
                 result = CodeGenHelper.GetIsSavable(typeSymbol);
                 _infoStore!.savableTypes[typeSymbol] = result;
             }
+
             return result;
         }
 
@@ -332,8 +301,10 @@ namespace Salvavida.Generator
                         sb.WriteLine($"if ({fieldName} is ISavable sv && sv.SvParent == null)");
                         sb.WriteLine($"    WatchChild({fieldName}, \"{propertyName}\");");
                     }
+
                     sb.WriteLine($"return {fieldName};");
                 }
+
                 sb.WriteLine("set");
                 using (sb.CurlyBracketsScope())
                 {
@@ -349,6 +320,7 @@ namespace Salvavida.Generator
                     }
                 }
             }
+
             sb.WriteLine();
         }
 
@@ -369,6 +341,7 @@ namespace Salvavida.Generator
                     sb.WriteLine($"return {fieldName}Ob;");
                 }
             }
+
             sb.WriteLine();
             sb.WriteLine($"public void Set{propertyName}({typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)} val)");
             using (sb.CurlyBracketsScope())
@@ -378,6 +351,7 @@ namespace Salvavida.Generator
                 sb.WriteLine($"{fieldName} = val;");
                 sb.WriteLine($"OnPropertyChanged(val, \"{propertyName}\");");
             }
+
             sb.WriteLine($"private void TryInit{propertyName}()");
             using (sb.CurlyBracketsScope())
             {
@@ -387,10 +361,11 @@ namespace Salvavida.Generator
                 sb.WriteLine($"WatchChild({fieldName}Ob, \"{propertyName}\");");
                 sb.WriteLine($"this.SetChild({fieldName}Ob);");
             }
+
             sb.WriteLine();
         }
 
-        protected string GetCollectionTypeString(CollectionType colType, ISymbol[] typeSymbols)
+        protected string GetCollectionTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols)
         {
             var format = SymbolDisplayFormat.FullyQualifiedFormat;
             var typeIndex = colType switch
@@ -399,7 +374,7 @@ namespace Salvavida.Generator
                 CollectionType.Dictionary => 1,
                 _ => throw new NotSupportedException(),
             };
-            var isSavable = CodeGenHelper.GetIsSavable((ITypeSymbol)typeSymbols[typeIndex]);
+            var isSavable = CodeGenHelper.GetIsSavable(typeSymbols[typeIndex]);
             var savableStr = isSavable ? "Savable" : "";
 
             return colType switch
@@ -413,6 +388,13 @@ namespace Salvavida.Generator
 
         protected virtual void WriteImplementationsHead(ScriptBuilder sb, CodeGenerationContext ctx)
         {
+            // ISerializeRoot Implementation
+            if (_infoStore!.generateSerializeRootMode == 2)
+            {
+                sb.WriteLine("public Serializer? Serializer { get; private set; }");
+                sb.WriteLine("public void SetSerializer(Serializer serializer) => Serializer = serializer;");
+                sb.WriteLine();
+            }
             // ISavable Implementation
             sb.WriteLine($"public event PropertyChangeEventHandler<{_infoStore!.className}> PropertyChanged;");
             sb.WriteLine();
@@ -445,6 +427,7 @@ namespace Salvavida.Generator
                     }
                 }
             }
+
             sb.WriteLine("partial void OnSvIdChanging(ref string svid);");
             sb.WriteLine("partial void OnSvIdChanged();");
             sb.WriteLine();
@@ -471,6 +454,7 @@ namespace Salvavida.Generator
                         }
                     }
                 }
+
                 sb.WriteLine();
             }
         }
@@ -484,6 +468,7 @@ namespace Salvavida.Generator
                 sb.WriteLine("SvParent = parent;");
                 sb.WriteLine("(this as ISavable).SetDirty(true, true);");
             }
+
             sb.WriteLine();
 
             sb.WriteLine("void ISavable.SetDirty(bool dirty, bool recursively)");
@@ -498,9 +483,10 @@ namespace Salvavida.Generator
                         {
                             foreach (var prop in _infoStore!.separatedProperties)
                             {
-                                var fieldName = GetOriginName(prop); 
+                                var fieldName = GetOriginName(prop);
                                 sb.WriteLine($"({fieldName} as ISavable)?.SetDirty(dirty, true);");
                             }
+
                             foreach (var kvp in _infoStore!.separatedCollections)
                             {
                                 sb.WriteLine($"({kvp.Key} as ISavable)?.SetDirty(dirty, true);");
@@ -509,6 +495,7 @@ namespace Salvavida.Generator
                     }
                 }
             }
+
             sb.WriteLine();
 
             sb.Write("private static readonly string[] _seperatedProperties = ");
@@ -521,10 +508,12 @@ namespace Salvavida.Generator
                     sb.Write(propName, true);
                     sb.Write("\", ", true);
                 }
+
                 sb.WriteLine("};", true);
             }
             else
                 sb.WriteLine("null;", true);
+
             sb.Write("private static readonly string[] _separatedCollections = ");
             if (_infoStore!.separatedCollections.Count > 0)
             {
@@ -535,10 +524,12 @@ namespace Salvavida.Generator
                     sb.Write(kvp.Key, true);
                     sb.Write("\", ", true);
                 }
+
                 sb.WriteLine("};", true);
             }
             else
                 sb.WriteLine("null;", true);
+
             sb.WriteLine("private void OnPropertyChanged<T>(T value, string propName)");
             using (sb.CurlyBracketsScope())
             {
@@ -546,6 +537,7 @@ namespace Salvavida.Generator
                 sb.WriteLine("this.TrySave(propName, value, typeof(T), _seperatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, propName);");
             }
+
             sb.WriteLine();
 
             sb.WriteLine("private void OnChildChanged<T>(T value, string propName)");
@@ -557,6 +549,7 @@ namespace Salvavida.Generator
                 sb.WriteLine("this.TrySave(sv.SvId, sv, typeof(T), _seperatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, sv.SvId);");
             }
+
             sb.WriteLine();
 
             sb.WriteLine("private void WatchChild<T>(T target, string propertyName)");
@@ -568,6 +561,7 @@ namespace Salvavida.Generator
                 sb.WriteLine("this.SetChild(sv);");
                 sb.WriteLine("sv.PropertyChanged += OnChildChanged;");
             }
+
             sb.WriteLine();
 
             sb.WriteLine("private void UnwatchChild<T>(T target)");
@@ -578,6 +572,7 @@ namespace Salvavida.Generator
                 sb.WriteLine("sv.SetParent(null);");
                 sb.WriteLine("sv.PropertyChanged -= OnChildChanged;");
             }
+
             sb.WriteLine();
 
             sb.WriteLine("public void Invalidate(bool recursively)");
@@ -587,10 +582,10 @@ namespace Salvavida.Generator
                 sb.WriteLine("var serializer = this.GetSerializer();");
                 sb.WriteLine("if (serializer == null || string.IsNullOrEmpty(SvId))");
                 sb.WriteLine("    return;");
-                sb.WriteLine("if (this is ISerializeRoot sr)");
-                sb.WriteLine("    serializer.FreshSaveByPolicy(this);");
-                sb.WriteLine("else");
-                sb.WriteLine("    PropertyChanged?.Invoke(this, SvId);");
+                if (CodeGenHelper.GetIsSavableRoot(ctx.TypeSymbol, false))
+                    sb.WriteLine("serializer.FreshSaveByPolicy(this);");
+                else
+                    sb.WriteLine("PropertyChanged?.Invoke(this, SvId);");
             }
 
             sb.WriteLine("void ISavable.BeforeSerialize(Serializer serializer)");
@@ -598,6 +593,7 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine("OnBeforeSerialize(serializer);");
             }
+
             sb.WriteLine("partial void OnBeforeSerialize(Serializer serializer);");
             sb.WriteLine();
 
@@ -612,19 +608,23 @@ namespace Salvavida.Generator
                         var propType = _infoStore.propTypeMappings[fieldName];
                         sb.WriteLine($"this.TrySaveSeperatedProperty(serializer, ctx, \"{prop}\", {fieldName}, typeof({propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}));");
                     }
+
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
                         sb.WriteLine($"{kvp.Key}?.TrySave(serializer, ctx);");
                     }
                 }
+
                 foreach (var kvp in _infoStore!.propTypeMappings)
                 {
                     if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
                         continue;
                     sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterSerialize(serializer, ctx,  \"{_infoStore!.nameMappings[kvp.Key]}\");");
                 }
+
                 sb.WriteLine("OnAfterSerialize(serializer, ctx);");
             }
+
             sb.WriteLine("partial void OnAfterSerialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
 
@@ -638,6 +638,7 @@ namespace Salvavida.Generator
                         var fieldName = GetOriginName(prop);
                         sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\", PathBuilder.Type.Property);");
                     }
+
                     foreach (var kvp in _infoStore!.separatedCollections)
                     {
                         var fieldName = GetOriginName(kvp.Key);
@@ -659,21 +660,23 @@ namespace Salvavida.Generator
                         sb.WriteLine($"({kvp.Key} as ISavable).SetDirty(false, false);");
                     }
                 }
+
                 foreach (var kvp in _infoStore!.propTypeMappings)
                 {
                     if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
                         continue;
                     sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterDeserialize(serializer, ctx, \"{_infoStore!.nameMappings[kvp.Key]}\");");
                 }
+
                 sb.WriteLine("OnAfterDeserialize(serializer, ctx);");
             }
+
             sb.WriteLine("partial void OnAfterDeserialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
         }
 
         protected virtual void AddAttributePreventSerialize(ScriptBuilder sb, bool isOnProperty)
         {
-
         }
 
         private string GetOriginName(string generatedName)
@@ -683,6 +686,7 @@ namespace Salvavida.Generator
                 if (kvp.Value == generatedName)
                     return kvp.Key;
             }
+
             throw new ArgumentException(generatedName);
         }
     }
