@@ -57,11 +57,11 @@ namespace Salvavida
         public static int defaultMaxLength = 1024;
         public static char propertySaperator = '.';
 
-        internal PathBuilder() : this(defaultMaxLength)
+        public PathBuilder() : this(defaultMaxLength)
         {
         }
 
-        internal PathBuilder(int maxLength)
+        public PathBuilder(int maxLength)
         {
             _memory = new char[maxLength];
             _segments = new List<PathSegment>();

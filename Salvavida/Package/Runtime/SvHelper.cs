@@ -1,3 +1,4 @@
+using Salvavida.DefaultImpl;
 using System;
 using System.Collections.Generic;
 
@@ -5,9 +6,11 @@ namespace Salvavida
 {
     public static class SvHelper
     {
+        public const string PROPNAME_COLLECTION_METADATA = "__ob_metadata__";
         internal static Type typeOfSavableInterface = typeof(ISavable);
-        internal static Type typeOfSaveOrderInterface = typeof(ISaveWithOrder);
+        //internal static Type typeOfSaveOrderInterface = typeof(ISaveWithOrder);
         internal static Random randomizer = new();
+        internal static readonly DefaultObjectPool<List<string>> idListPool = new(() => new List<string>(), l => l.Clear(), 10);
         private static Stack<(string, PathBuilder.Type)> _tempPathBuilder = new();
 
         public static bool CheckIsSavable<T>()
@@ -15,10 +18,10 @@ namespace Salvavida
             return typeOfSavableInterface.IsAssignableFrom(typeof(T));
         }
 
-        public static bool CheckIsSaveWithOrder<T>()
-        {
-            return typeOfSaveOrderInterface.IsAssignableFrom(typeof(T));
-        }
+        //public static bool CheckIsSaveWithOrder<T>()
+        //{
+        //    return typeOfSaveOrderInterface.IsAssignableFrom(typeof(T));
+        //}
 
         public static void SetChild<T>(this ISavable parent, T child)
         {
@@ -79,70 +82,70 @@ namespace Salvavida
             return null;
         }
 
-        public static void TrySaveSeperatedProperty<TParent, T>(this TParent? savable, Serializer serializer, SerializeContext ctx, string propName, T? value, Type type) where TParent : ISavable
-        {
-            if (savable == null)
-                return;
-            if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
-                return;
+        //public static void TrySaveSeparatedProperty<TParent, T>(this TParent? savable, Serializer serializer, SerializeContext ctx, string propName, T? value, Type type) where TParent : ISavable
+        //{
+        //    if (savable == null)
+        //        return;
+        //    if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
+        //        return;
 
-            if (serializer == null)
-                return;
-            serializer.Save(savable, ctx, propName, value, type, PathBuilder.Type.Property);
-        }
+        //    if (serializer == null)
+        //        return;
+        //    serializer.Save(savable, ctx, propName, value, type, PathBuilder.Type.Property);
+        //}
 
 
-        public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, Type type, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
-        {
-            if (savable == null || value == null)
-                return;
-            if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
-                return;
+        //public static void TrySave<TParent, T>(this TParent? savable, string propName, T? value, Type type, string[]? separatedProperties, string[]? separatedCollections) where TParent : ISavable
+        //{
+        //    if (savable == null || value == null)
+        //        return;
+        //    if (propName == nameof(savable.SvId)) // propName == oldId should call TryUpdateId()
+        //        return;
 
-            if (separatedCollections != null && Array.IndexOf(separatedCollections, propName) >= 0)
-            {
-                // collections will not call this method
-                return;
-            }
+        //    if (separatedCollections != null && Array.IndexOf(separatedCollections, propName) >= 0)
+        //    {
+        //        // collections will not call this method
+        //        return;
+        //    }
 
-            Serializer? serializer = null;
-            if (separatedProperties != null && Array.IndexOf(separatedProperties, propName) >= 0)
-            {
-                serializer = GetSerializer(savable);
-                if (serializer == null)
-                    return;
-                serializer.FreshSaveByPolicy(savable, propName.AsMemory(), value, type, PathBuilder.Type.Property);
-                return;
-            }
+        //    Serializer? serializer = null;
+        //    if (separatedProperties != null && Array.IndexOf(separatedProperties, propName) >= 0)
+        //    {
+        //        serializer = GetSerializer(savable);
+        //        if (serializer == null)
+        //            return;
+        //        serializer.FreshSave(savable, propName, value, type, PathBuilder.Type.Property);
+        //        return;
+        //    }
 
-            // if savable's parent is not null, then the save action will perform by its parent, not itself.
-            var parent = savable.SvParent;
-            if (parent != null)
-                return;
+        //    // if savable's parent is not null, then the save action will perform by its parent, not itself.
+        //    var parent = savable.SvParent;
+        //    if (parent != null)
+        //        return;
 
-            serializer ??= GetSerializer(savable);
-            serializer?.FreshSaveByPolicy(savable);
-        }
+        //    serializer ??= GetSerializer(savable);
+        //    serializer?.FreshSave(savable);
+        //}
 
-        public static void TryUpdateId<T>(this T? savable, string oldId) where T : ISavable
-        {
-            if (savable == null)
-                return;
-            var serializer = GetSerializer(savable);
-            if (serializer == null)
-                return;
-            serializer.FreshUpdateIdByPolicy(savable, oldId.AsMemory());
-        }
+        //public static void TryUpdateId<T>(this T? savable, string oldId) where T : ISavable
+        //{
+        //    if (savable == null)
+        //        return;
+        //    var serializer = GetSerializer(savable);
+        //    if (serializer == null)
+        //        return;
+        //    serializer.FreshUpdateId(savable, oldId);
+        //}
 
-        public static void TryUpdateOrder<T>(this T? savable, int order) where T : ISavable
-        {
-            if (savable == null)
-                return;
-            var serializer = GetSerializer(savable);
-            if (serializer == null)
-                return;
-            serializer.FreshUpdateOrderByPolicy(savable, order);
-        }
+        //public static void TryUpdateOrder<T>(this T? savable, int order) where T : ISavable
+        //{
+        //    if (savable == null)
+        //        return;
+        //    var serializer = GetSerializer(savable);
+        //    if (serializer == null)
+        //        return;
+        //    serializer.FreshUpdateOrder(savable, order);
+        //}
 
         public static void TryThrowOnSvIdEmpty<T>(T? sv) where T : ISavable
         {

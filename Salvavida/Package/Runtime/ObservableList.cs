@@ -1,6 +1,8 @@
+using Salvavida.DefaultImpl;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Salvavida
 {
@@ -10,12 +12,12 @@ namespace Salvavida
             : base(propName, saveSeparately)
         {
             _list = default!;
-            _orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
+            //_orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
             SwapSource(src, false);
         }
 
         private List<T?> _list;
-        private readonly bool _orderMatters;
+        //private readonly bool _orderMatters;
 
         public T? this[int index]
         {
@@ -47,6 +49,25 @@ namespace Salvavida
         object ICollection.SyncRoot => ((ICollection)_list).SyncRoot;
 
         public List<T?> RetrieveSource() => _list;
+
+        public object RetrieveSourceRaw() => _list;
+
+        public Type CollectionType => typeof(List<T?>);
+
+        public override void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            serializer.SaveList(_list, ctx, SvId);
+        }
+
+        public override void Deserialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var list = serializer.ReadList<T>(ctx, SvId);
+            SwapSource(list);
+        }
 
         public void SwapSource(List<T?> list)
         {
@@ -89,17 +110,17 @@ namespace Salvavida
             return CollectionChangeInfo<T?>.Add(_list, 0);
         }
 
-        protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
-        {
-            if (!SaveSeparately)
-                throw new NotSupportedException();
-            if (string.IsNullOrEmpty(SvId))
-                throw new NullReferenceException(nameof(SvId));
-            if (ctx == null)
-                serializer.FreshActionByPolicy(this, path => serializer.SaveList(_list, path), null);
-            else
-                serializer.SaveList(_list, ctx);
-        }
+        //protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
+        //{
+        //    if (!SaveSeparately)
+        //        throw new NotSupportedException();
+        //    if (string.IsNullOrEmpty(SvId))
+        //        throw new NullReferenceException(nameof(SvId));
+        //    if (ctx == null)
+        //        serializer.FreshAction(this, path => serializer.SaveList(_list, path), null);
+        //    else
+        //        serializer.SaveList(_list, ctx);
+        //}
 
         public void Add(T? item)
         {
@@ -129,10 +150,10 @@ namespace Salvavida
 
         private void OnItemSet(T? item, int index)
         {
-            if (_orderMatters && item is ISaveWithOrder swo)
-                swo.SvOrder = index;
+            //if (_orderMatters && item is ISaveWithOrder swo)
+            //    swo.SvOrder = index;
             if (item is ISavable sv)
-                sv.SvId = index.ToString();
+                sv.SvId ??= DefaultIdGenerator.Default.GetId();
             TryWatch(item);
         }
 
@@ -238,12 +259,13 @@ namespace Salvavida
            : base(propName, saveSeparately)
         {
             _list = default!;
-            _orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
+            //_orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
             SwapSource(src, false);
         }
 
         private List<T?> _list;
-        private readonly bool _orderMatters;
+        private string?[]? _idsOnDeserialized;
+        //private readonly bool _orderMatters;
 
         public T? this[int index]
         {
@@ -275,6 +297,59 @@ namespace Salvavida
         object ICollection.SyncRoot => ((ICollection)_list).SyncRoot;
 
         public List<T?> RetrieveSource() => _list;
+
+        public object RetrieveSourceRaw() => _list;
+
+        public Type CollectionType => typeof(List<T?>);
+
+        public override void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var tempIds = SvHelper.idListPool.Get();
+            try
+            {
+                foreach (var elem in _list)
+                {
+                    serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                    tempIds.Add(elem.SvId);
+                }
+                serializer.SaveList(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+                foreach (var oldId in _idsOnDeserialized)
+                {
+                    if (tempIds.IndexOf(oldId) < 0)
+                    {
+                        serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                    }
+                }
+            }
+            finally
+            {
+                SvHelper.idListPool.Return(tempIds);
+            }
+
+            _idsOnDeserialized = null;
+        }
+
+        public override void Deserialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var tempIds = serializer.ReadList<string?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+            List<T?> list;
+            if (tempIds == null || tempIds.Count == 0)
+                list = null;
+            else
+            {
+                _idsOnDeserialized = tempIds.ToArray();
+                list = new List<T?>();
+                foreach (var id in _idsOnDeserialized)
+                {
+                    list.Add(serializer.ReadObject<T?>(ctx, id, PathBuilder.Type.Collection));
+                }
+            }
+            SwapSource(list);
+        }
 
         public void SwapSource(List<T?> list)
         {
@@ -345,10 +420,10 @@ namespace Salvavida
 
         private void OnItemSet(T? item, int index)
         {
-            if (_orderMatters && item is ISaveWithOrder swo)
-                swo.SvOrder = index;
+            //if (_orderMatters && item is ISaveWithOrder swo)
+            //    swo.SvOrder = index;
             if (item is ISavable sv)
-                sv.SvId = index.ToString();
+                sv.SvId ??= DefaultIdGenerator.Default.GetId();
             TryWatch(item);
         }
 
@@ -446,41 +521,41 @@ namespace Salvavida
             Insert(newIndex, item);
         }
 
-        protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
-        {
-            base.TrySaveItems(serializer, ctx, e);
-            if (!_orderMatters)
-                return;
-            if (e.Action == CollectionChangedAction.Add && e.NewStartingIndex >= 0)
-            {
-                var count = e.IsSingleItem ? 1 : e.NewItems!.Count;
-                var index = e.NewStartingIndex + count;
-                TryUpdateOrder(serializer, ctx, index);
-            }
-            else if (e.Action == CollectionChangedAction.Remove && e.OldStartingIndex >= 0)
-            {
-                var index = e.OldStartingIndex;
-                TryUpdateOrder(serializer, ctx, index);
-            }
-        }
+        //protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
+        //{
+        //    base.TrySaveItems(serializer, ctx, e);
+        //    if (!_orderMatters)
+        //        return;
+        //    if (e.Action == CollectionChangedAction.Add && e.NewStartingIndex >= 0)
+        //    {
+        //        var count = e.IsSingleItem ? 1 : e.NewItems!.Count;
+        //        var index = e.NewStartingIndex + count;
+        //        TryUpdateOrder(serializer, ctx, index);
+        //    }
+        //    else if (e.Action == CollectionChangedAction.Remove && e.OldStartingIndex >= 0)
+        //    {
+        //        var index = e.OldStartingIndex;
+        //        TryUpdateOrder(serializer, ctx, index);
+        //    }
+        //}
 
-        private void TryUpdateOrder(Serializer serializer, SerializeContext? ctx, int index)
-        {
-            var count = _list.Count - index;
-            if (count <= 0)
-                return;
-            var list = new List<T?>();
-            for (var i = index; i < _list.Count; i++)
-            {
-                var item = _list[i];
-                if (item == null)
-                    continue;
-                if (item is ISaveWithOrder swo)
-                    swo.SvOrder = i;
-                item.SvId = i.ToString();
-                list.Add(_list[i]);
-            }
-            CollectionUpdateOrder(serializer, ctx, list);
-        }
+        //private void TryUpdateOrder(Serializer serializer, SerializeContext? ctx, int index)
+        //{
+        //    var count = _list.Count - index;
+        //    if (count <= 0)
+        //        return;
+        //    var list = new List<T?>();
+        //    for (var i = index; i < _list.Count; i++)
+        //    {
+        //        var item = _list[i];
+        //        if (item == null)
+        //            continue;
+        //        if (item is ISaveWithOrder swo)
+        //            swo.SvOrder = i;
+        //        item.SvId = i.ToString();
+        //        list.Add(_list[i]);
+        //    }
+        //    CollectionUpdateOrder(serializer, ctx, list);
+        //}
     }
 }

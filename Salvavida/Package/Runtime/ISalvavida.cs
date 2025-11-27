@@ -13,9 +13,6 @@ namespace Salvavida
     public interface ISalvavida : IDisposable
     {
         string Id { get; }
-        Task SaveAsync(CancellationToken token);
-        Task LoadAsync(CancellationToken token);
-        Task BackupAsync(CancellationToken token);
 
         void Save();
         void Load();

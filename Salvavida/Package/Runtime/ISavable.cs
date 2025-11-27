@@ -12,7 +12,7 @@ namespace Salvavida
 
         void Invalidate(bool recursively);
 
-        void BeforeSerialize(Serializer serializer);
+        void BeforeSerialize(Serializer serializer, SerializeContext ctx);
         void AfterSerialize(Serializer serializer, SerializeContext ctx);
         void AfterDeserialize(Serializer serializer, SerializeContext ctx);
     }

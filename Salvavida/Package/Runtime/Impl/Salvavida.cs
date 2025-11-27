@@ -33,22 +33,11 @@ namespace Salvavida.DefaultImpl
 
         public abstract void Load();
 
-        public abstract Task LoadAsync(CancellationToken token);
-
         public abstract void Save();
-
-        public abstract Task SaveAsync(CancellationToken token);
 
         public virtual void Backup()
         {
             BackupService?.Backup();
-        }
-
-        public virtual async Task BackupAsync(CancellationToken token)
-        {
-            if (BackupService == null)
-                return;
-            await BackupService.BackupAsync(Serializer.AsyncIO, token);
         }
     }
 
@@ -82,7 +71,7 @@ namespace Salvavida.DefaultImpl
         {
             if (Serializer == null)
                 throw new NullReferenceException(nameof(Serializer));
-            var data = Serializer.FreshReadSync<TData>(Id);
+            var data = Serializer.FreshRead<TData>(Id);
             var needsSave = false;
             if (data == null)
             {
@@ -97,57 +86,13 @@ namespace Salvavida.DefaultImpl
                 Save();
         }
 
-        public override async Task LoadAsync(CancellationToken token)
-        {
-            if (Serializer == null)
-                throw new NullReferenceException(nameof(Serializer));
-            var data = await Serializer.FreshReadAsync<TData>(Id.AsMemory(), token);
-            var needsSave = false;
-            if (data == null)
-            {
-                data = Serializer.CreateData<TData>();
-                data.SvId = Id;
-                needsSave = true;
-            }
-            data.SetSerializer(Serializer);
-            Data = data;
-#if USE_UNITASK && !SV_FORCE_TASK
-            var t = _onDataLoadedAsync != null ? _onDataLoadedAsync.Invoke() : default;
-#else
-            var t = _onDataLoadedAsync?.Invoke();
-            if(t!=null)
-#endif
-            {
-                await t;
-            }
-            if (needsSave)
-                await SaveAsync(token);
-        }
-
         public override void Save()
         {
             if (Serializer == null)
                 throw new NullReferenceException(nameof(Serializer));
             if (Data != null)
-                Serializer.FreshSaveSync(Data);
+                Serializer.FreshSave(Data);
             _onDataSaved?.Invoke();
-        }
-
-        public override async Task SaveAsync(CancellationToken token)
-        {
-            if (Serializer == null)
-                throw new NullReferenceException(nameof(Serializer));
-            if (Data != null)
-                await Serializer.FreshSaveAsync(Data, token);
-#if USE_UNITASK && !SV_FORCE_TASK
-            var t = _onDataLoadedAsync != null ? _onDataLoadedAsync.Invoke() : default;
-#else
-            var t = _onDataLoadedAsync?.Invoke();
-            if(t!=null)
-#endif
-            {
-                await t;
-            }
         }
     }
 }

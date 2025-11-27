@@ -63,6 +63,25 @@ namespace Salvavida
 
         public Dictionary<TKey, TValue?> RetrieveSource() => _dict;
 
+        public object RetrieveSourceRaw() => _dict;
+
+        public Type CollectionType => typeof(Dictionary<TKey, TValue?>);
+
+        public override void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            serializer.SaveDict(_dict, ctx, SvId);
+        }
+
+        public override void Deserialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var list = serializer.ReadDict<TKey, TValue?>(ctx, SvId);
+            SwapSource(list);
+        }
+
         public void SwapSource(Dictionary<TKey, TValue?> dict)
         {
             _isDirty = true;
@@ -110,18 +129,18 @@ namespace Salvavida
             return CollectionChangeInfo<TValue?>.Add(arr, -1);
         }
 
-        protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
-        {
-            if (!SaveSeparately)
-                throw new NotSupportedException();
+        //protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
+        //{
+        //    if (!SaveSeparately)
+        //        throw new NotSupportedException();
 
-            if (string.IsNullOrEmpty(SvId))
-                throw new NullReferenceException(nameof(SvId));
-            if (ctx == null)
-                serializer.FreshActionByPolicy(this, path => serializer.SaveDict(_dict, path), null);
-            else
-                serializer.SaveDict(_dict, ctx);
-        }
+        //    if (string.IsNullOrEmpty(SvId))
+        //        throw new NullReferenceException(nameof(SvId));
+        //    if (ctx == null)
+        //        serializer.FreshAction(this, path => serializer.SaveDict(_dict, path), null);
+        //    else
+        //        serializer.SaveDict(_dict, ctx);
+        //}
 
         private void OnItemSet(TValue? item, TKey key)
         {
@@ -215,6 +234,7 @@ namespace Salvavida
 
         private Dictionary<TKey, TValue?> _dict;
         private readonly ISvIdConverter<TKey> _idConverter;
+        private string[]? _keysOnDeserialized;
 
         public TValue? this[TKey key]
         {
@@ -259,6 +279,52 @@ namespace Salvavida
         bool IDictionary.IsReadOnly => false;
 
         public Dictionary<TKey, TValue?> RetrieveSource() => _dict;
+
+        public object RetrieveSourceRaw() => _dict;
+
+        public Type CollectionType => typeof(Dictionary<TKey, TValue?>);
+
+        public override void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var tempIds = SvHelper.idListPool.Get();
+            foreach (var (key, value) in _dict)
+            {
+                serializer.Save(value, ctx, PathBuilder.Type.Collection);
+                tempIds.Add(value.SvId);
+            }
+            serializer.SaveList(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+            foreach (var oldId in _keysOnDeserialized)
+            {
+                if (tempIds.IndexOf(oldId) < 0)
+                {
+                    serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                }
+            }
+
+            _keysOnDeserialized = null;
+        }
+
+        public override void Deserialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var tempIds = serializer.ReadList<string?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+            Dictionary<TKey, TValue?>? dict;
+            if (tempIds == null || tempIds.Count == 0)
+                dict = null;
+            else
+            {
+                _keysOnDeserialized = tempIds.ToArray();
+                dict = new Dictionary<TKey, TValue?>();
+                foreach (var id in _keysOnDeserialized)
+                {
+                    dict[_idConverter.ConvertFrom(id)] = serializer.ReadObject<TValue?>(ctx, id, PathBuilder.Type.Collection);
+                }
+            }
+            SwapSource(dict);
+        }
 
         public void SwapSource(Dictionary<TKey, TValue?> dict)
         {
@@ -383,71 +449,71 @@ namespace Salvavida
         public bool TryGetValue(TKey key, out TValue? value) => _dict.TryGetValue(key, out value);
 
 
-        protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
-        {
-            switch (e.Action)
-            {
-                case CollectionChangedAction.Add:
-                case CollectionChangedAction.Replace:
-                    if (e.IsSingleItem)
-                        KeyCollectionSave(serializer, ctx, e.NewItem!, isRemove: false);
-                    else
-                        KeyCollectionSave(serializer, ctx, e.NewItems!, isRemove: false);
-                    break;
-                case CollectionChangedAction.Remove:
-                    if (e.IsSingleItem)
-                        KeyCollectionSave(serializer, ctx, e.OldItem!, isRemove: true);
-                    else
-                        KeyCollectionSave(serializer, ctx, e.OldItems!, isRemove: true);
-                    break;
-                case CollectionChangedAction.Reset:
-                    ClearCollection(serializer, ctx);
-                    break;
-                default:
-                    throw new NotSupportedException();
-            }
-        }
+        //protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
+        //{
+        //    switch (e.Action)
+        //    {
+        //        case CollectionChangedAction.Add:
+        //        case CollectionChangedAction.Replace:
+        //            if (e.IsSingleItem)
+        //                KeyCollectionSave(serializer, ctx, e.NewItem!, isRemove: false);
+        //            else
+        //                KeyCollectionSave(serializer, ctx, e.NewItems!, isRemove: false);
+        //            break;
+        //        case CollectionChangedAction.Remove:
+        //            if (e.IsSingleItem)
+        //                KeyCollectionSave(serializer, ctx, e.OldItem!, isRemove: true);
+        //            else
+        //                KeyCollectionSave(serializer, ctx, e.OldItems!, isRemove: true);
+        //            break;
+        //        case CollectionChangedAction.Reset:
+        //            ClearCollection(serializer, ctx);
+        //            break;
+        //        default:
+        //            throw new NotSupportedException();
+        //    }
+        //}
 
-        private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, TValue value, bool isRemove)
-        {
-            if (isRemove)
-            {
-                if (ctx == null)
-                    serializer.FreshDeleteByPolicy(value);
-                else
-                    serializer.Delete(value, ctx, PathBuilder.Type.Collection);
-            }
-            else
-            {
-                if (ctx == null)
-                    serializer.FreshSaveByPolicy(value);
-                else
-                    serializer.Save(value, ctx, PathBuilder.Type.Collection);
-            }
-        }
+        //private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, TValue value, bool isRemove)
+        //{
+        //    if (isRemove)
+        //    {
+        //        if (ctx == null)
+        //            serializer.FreshDelete(value);
+        //        else
+        //            serializer.Delete(value, ctx, PathBuilder.Type.Collection);
+        //    }
+        //    else
+        //    {
+        //        if (ctx == null)
+        //            serializer.FreshSave(value);
+        //        else
+        //            serializer.Save(value, ctx, PathBuilder.Type.Collection);
+        //    }
+        //}
 
-        private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, IList<TValue?> values, bool isRemove)
-        {
-            if (values == null)
-                throw new ArgumentNullException(nameof(values));
-            if (ctx == null)
-                serializer.FreshActionByPolicy(this, x => KeyCollectionSaveAction(serializer, x, values, isRemove), null);
-            else
-                KeyCollectionSaveAction(serializer, ctx, values, isRemove);
-        }
+        //private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, IList<TValue?> values, bool isRemove)
+        //{
+        //    if (values == null)
+        //        throw new ArgumentNullException(nameof(values));
+        //    if (ctx == null)
+        //        serializer.FreshAction(this, x => KeyCollectionSaveAction(serializer, x, values, isRemove), null);
+        //    else
+        //        KeyCollectionSaveAction(serializer, ctx, values, isRemove);
+        //}
 
-        private void KeyCollectionSaveAction(Serializer serializer, SerializeContext ctx, IList<TValue?> values, bool isRemove)
-        {
-            for (var i = 0; i < values.Count; i++)
-            {
-                var val = values[i];
-                if (val == null)
-                    continue;
-                if (isRemove)
-                    serializer.Delete(val, ctx, PathBuilder.Type.Collection);
-                else
-                    serializer.Save(val, ctx, PathBuilder.Type.Collection);
-            }
-        }
+        //private void KeyCollectionSaveAction(Serializer serializer, SerializeContext ctx, IList<TValue?> values, bool isRemove)
+        //{
+        //    for (var i = 0; i < values.Count; i++)
+        //    {
+        //        var val = values[i];
+        //        if (val == null)
+        //            continue;
+        //        if (isRemove)
+        //            serializer.Delete(val, ctx, PathBuilder.Type.Collection);
+        //        else
+        //            serializer.Save(val, ctx, PathBuilder.Type.Collection);
+        //    }
+        //}
     }
 }

@@ -15,7 +15,6 @@ namespace Salvavida.Generator
         public readonly Dictionary<string, ITypeSymbol> propTypeMappings = new();
         public readonly Dictionary<string, (CollectionType, ImmutableArray<ITypeSymbol>)> collectionParameterMappings = new();
         public readonly Dictionary<ITypeSymbol, bool> savableTypes = new(SymbolEqualityComparer.Default);
-        public bool isOrderedClass;
         /// <summary>
         /// 0 = no generate, 1 = generate by inheritance 2 = generate by implementing
         /// </summary>
