@@ -8,9 +8,11 @@ namespace Salvavida.Generator
     {
         public string? className;
         public readonly HashSet<string> existingPropertyNames = new();
-        public readonly Dictionary<string, bool> separatedCollections = new();
+        public readonly HashSet<string> nonSeparatedCollections = new();
+        public readonly HashSet<string> separatedCollections = new();
         public readonly HashSet<string> separatedProperties = new();
-        public readonly HashSet<string> internalSeparatedMembers = new();
+        public readonly HashSet<string> savableMembers = new();
+        //public readonly HashSet<string> internalSeparatedMembers = new();
         public readonly Dictionary<string, string> nameMappings = new();
         public readonly Dictionary<string, ITypeSymbol> propTypeMappings = new();
         public readonly Dictionary<string, (CollectionType, ImmutableArray<ITypeSymbol>)> collectionParameterMappings = new();

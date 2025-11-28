@@ -27,7 +27,7 @@ namespace Salvavida
         }
 
         private readonly PathBuilder _lockedPathBuilder = new();
-        private SerializeContext _serializeContext;
+        private SerializeContext? _serializeContext;
         private int _pathBuilderLocker = 0;
         protected IIdGenerator? _idGen;
 
@@ -80,7 +80,9 @@ namespace Salvavida
             var path = ctx.Path;
             path.Clear();
             ctx.ReturnToPool();
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
             ctx.Path = null;
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
             OnReturnContext(ctx);
             Interlocked.CompareExchange(ref _pathBuilderLocker, 0, 1);
         }
@@ -200,13 +202,13 @@ namespace Salvavida
             using var locker = BeginFreshAction(out var ctx);
             data.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
-            DoSaveObject(data, ctx);
+            SaveObject(data, ctx);
         }
 
         public void SaveSelf<T>(T savable, SerializeContext ctx) where T : ISavable
         {
             ThrowIfPathIsEmpty(ctx.Path);
-            DoSaveObject(savable, ctx);
+            SaveObject(savable, ctx);
         }
 
         public void Save<T>(T savable, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
@@ -215,7 +217,7 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(savable));
 
             using var __s = ctx.Path.UsePush(savable.SvId!, type);
-            DoSaveObject(savable, ctx);
+            SaveObject(savable, ctx);
         }
 
         public void Save<T>(ISavable parent, SerializeContext ctx, ReadOnlySpan<char> propName, T data, PathBuilder.Type pathBuilderType)
@@ -227,7 +229,7 @@ namespace Salvavida
             ThrowIfPathIsEmpty(ctx.Path);
 
             using var __s = ctx.Path.UsePush(propName, pathBuilderType);
-            DoSaveObject(data, ctx);
+            SaveObject(data, ctx);
         }
 
         public void Save<T>(ISavable parent, SerializeContext ctx, ReadOnlySpan<char> propName, T data, Type type, PathBuilder.Type pathBuilderType)
@@ -250,7 +252,7 @@ namespace Salvavida
             parent.GetSavePathAsSpan(ctx.Path);
             ThrowIfPathIsEmpty(ctx.Path);
             using var __s = ctx.Path.UsePush(propName, pathBuilderType);
-            DoSaveObject(data, ctx);
+            SaveObject(data, ctx);
         }
 
         public void FreshSave<T>(ISavable parent, ReadOnlySpan<char> propName, T data, Type type, PathBuilder.Type pathBuilderType)
@@ -265,16 +267,16 @@ namespace Salvavida
             DoSaveObject(data, type, ctx);
         }
 
-        public void SaveObject<T>(T obj, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
+        public void SaveObject<T>(T? obj, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
 
             using var __s = ctx.Path.UsePush(propName, pathBuilderType);
-            DoSaveObject(obj, ctx);
+            SaveObject(obj, ctx);
         }
 
-        public void SaveObject<T>(T obj, Type type, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
+        public void SaveObject<T>(T? obj, Type type, SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathBuilderType)
         {
             if (propName.IsEmpty)
                 throw new ArgumentNullException(nameof(propName));
@@ -300,21 +302,9 @@ namespace Salvavida
             return false;
         }
 
-        protected virtual void DoSaveObject<T>(T obj, SerializeContext ctx)
+        public virtual void SaveObject<T>(T? obj, SerializeContext ctx)
         {
-            if (TryDeleteOnNull(obj, ctx))
-                return;
-
-            try
-            {
-                BeforeSerialize(obj, ctx);
-                DoSaveObjectImpl(obj, ctx);
-                AfterSerialize(obj, ctx);
-            }
-            catch (Exception ex)
-            {
-                OnSaveObjectFailed(ctx, ex);
-            }
+            DoSaveObject(obj, typeof(T), ctx);
         }
 
         protected virtual void DoSaveObject<T>(T obj, Type type, SerializeContext ctx)
@@ -324,9 +314,9 @@ namespace Salvavida
 
             try
             {
-                BeforeSerialize(obj, type, ctx);
+                //BeforeSerialize(obj, type, ctx);
                 DoSaveObjectImpl(obj, type, ctx);
-                AfterSerialize(obj, type, ctx);
+                //AfterSerialize(obj, type, ctx);
             }
             catch (Exception ex)
             {
@@ -342,29 +332,29 @@ namespace Salvavida
             throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnSaveObjectFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
-        public virtual void SaveList<T>(List<T?> list, SerializeContext ctx, ReadOnlySpan<char> propertyName)
-        {
-            using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
-            SaveList(list, ctx);
-        }
+        //public virtual void SaveList<T>(List<T?> list, SerializeContext ctx, ReadOnlySpan<char> propertyName)
+        //{
+        //    using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
+        //    SaveList(list, ctx);
+        //}
 
-        public virtual void SaveArray<T>(T?[] arr, SerializeContext ctx, ReadOnlySpan<char> propertyName)
-        {
-            using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
-            SaveArray(arr, ctx);
-        }
+        //public virtual void SaveArray<T>(T?[]? arr, SerializeContext ctx, ReadOnlySpan<char> propertyName)
+        //{
+        //    using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
+        //    SaveArray(arr, ctx);
+        //}
 
-        public virtual void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?> dict, SerializeContext ctx, ReadOnlySpan<char> propertyName)
-        {
-            using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
-            SaveDict(dict, ctx);
-        }
+        //public virtual void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?> dict, SerializeContext ctx, ReadOnlySpan<char> propertyName)
+        //{
+        //    using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
+        //    SaveDict(dict, ctx);
+        //}
 
-        public abstract void SaveList<T>(List<T?> list, SerializeContext ctx);
+        //public abstract void SaveList<T>(List<T?>? list, SerializeContext ctx);
 
-        public abstract void SaveArray<T>(T?[] arr, SerializeContext ctx);
+        //public abstract void SaveArray<T>(T?[]? arr, SerializeContext ctx);
 
-        public abstract void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?> dict, SerializeContext ctx);
+        //public abstract void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?>? dict, SerializeContext ctx);
 
         public T? FreshRead<T>(ReadOnlySpan<char> svid) where T : ISavable
         {
@@ -398,7 +388,7 @@ namespace Salvavida
 
         protected abstract T? DoReadImpl<T>(SerializeContext ctx);
 
-        public ObservableArraySavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T[] src) where T : ISavable
+        public ObservableArraySavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T?[]? src) where T : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
             var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
@@ -410,7 +400,7 @@ namespace Salvavida
             return ob;
         }
 
-        public ObservableListSavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T> src) where T : ISavable
+        public ObservableListSavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T?>? src) where T : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
             var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
@@ -422,10 +412,12 @@ namespace Salvavida
             return ob;
         }
 
-        public ObservableDictionarySavable<TKey, TValue> LoadCollectionSavable<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src) where TValue : ISavable
+        public ObservableDictionarySavable<TKey, TValue?> LoadCollectionSavable<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src)
+            where TKey : notnull
+            where TValue : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var ob = new ObservableDictionarySavable<TKey, TValue>(propName.ToString(), src, saveSeparately);
+            var ob = new ObservableDictionarySavable<TKey, TValue?>(propName.ToString(), src, saveSeparately);
             if (saveSeparately)
             {
                 ob.Deserialize(this, ctx);
@@ -434,10 +426,10 @@ namespace Salvavida
             return ob;
         }
 
-        public ObservableArray<T> LoadCollection<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T[] src)
+        public ObservableArray<T?> LoadCollection<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T?[]? src)
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var ob = new ObservableArray<T>(propName.ToString(), src, saveSeparately);
+            var ob = new ObservableArray<T?>(propName.ToString(), src, saveSeparately);
             if (saveSeparately)
             {
                 ob.Deserialize(this, ctx);
@@ -446,10 +438,10 @@ namespace Salvavida
             return ob;
         }
 
-        public ObservableList<T> LoadCollection<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T> src)
+        public ObservableList<T?> LoadCollection<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T?>? src)
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var ob = new ObservableList<T>(propName.ToString(), src, saveSeparately);
+            var ob = new ObservableList<T?>(propName.ToString(), src, saveSeparately);
             if (saveSeparately)
             {
                 ob.Deserialize(this, ctx);
@@ -458,10 +450,11 @@ namespace Salvavida
             return ob;
         }
 
-        public ObservableDictionary<TKey, TValue> LoadCollection<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src)
+        public ObservableDictionary<TKey, TValue?> LoadCollection<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src)
+            where TKey : notnull
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var ob = new ObservableDictionary<TKey, TValue>(propName.ToString(), src, saveSeparately);
+            var ob = new ObservableDictionary<TKey, TValue?>(propName.ToString(), src, saveSeparately);
             if (saveSeparately)
             {
                 ob.Deserialize(this, ctx);
@@ -592,19 +585,20 @@ namespace Salvavida
             throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
-        protected virtual void BeforeSerialize<T>(T obj, SerializeContext ctx)
-        {
-            if (obj is not ISavable sv)
-                return;
-            sv.BeforeSerialize(this, ctx);
-        }
-        protected virtual void AfterSerialize<T>(T obj, SerializeContext ctx)
-        {
-            if (obj is not ISavable sv)
-                return;
-            sv.AfterSerialize(this, ctx);
-            sv.SetDirty(false, false);
-        }
+        //protected virtual void BeforeSerialize<T>(T obj, SerializeContext ctx)
+        //{
+        //    if (obj is not ISavable sv)
+        //        return;
+        //    sv.BeforeSerialize(this, ctx);
+        //}
+        //protected virtual void AfterSerialize<T>(T obj, SerializeContext ctx)
+        //{
+        //    if (obj is not ISavable sv)
+        //        return;
+        //    sv.AfterSerialize(this, ctx);
+        //    sv.SetDirty(false, false);
+        //}
+
         protected virtual void AfterDeserialize<T>(T obj, SerializeContext ctx)
         {
             if (obj is not ISavable sv)
@@ -615,19 +609,19 @@ namespace Salvavida
             sv.SetDirty(false, false);
         }
 
-        protected virtual void BeforeSerialize<T>(T obj, Type t, SerializeContext ctx)
-        {
-            if (obj is not ISavable sv)
-                return;
-            sv.BeforeSerialize(this, ctx);
-        }
-        protected virtual void AfterSerialize<T>(T obj, Type t, SerializeContext ctx)
-        {
-            if (obj is not ISavable sv)
-                return;
-            sv.AfterSerialize(this, ctx);
-            sv.SetDirty(false, false);
-        }
+        //protected virtual void BeforeSerialize<T>(T obj, Type t, SerializeContext ctx)
+        //{
+        //    if (obj is not ISavable sv)
+        //        return;
+        //    sv.BeforeSerialize(this, ctx);
+        //}
+        //protected virtual void AfterSerialize<T>(T obj, Type t, SerializeContext ctx)
+        //{
+        //    if (obj is not ISavable sv)
+        //        return;
+        //    sv.AfterSerialize(this, ctx);
+        //    sv.SetDirty(false, false);
+        //}
 
         public virtual void Dispose()
         {

@@ -18,7 +18,7 @@ namespace Salvavida
             _svid = svid;
         }
 
-        protected string _svid;
+        protected string? _svid;
         protected bool _isDirty = true;
 
         public ISavable? SvParent { get; protected set; }
@@ -31,12 +31,11 @@ namespace Salvavida
             set { }
         }
 
-        public string SvIdDeserialized => null;
 
         public bool SaveSeparately { get; protected set; }
 
-        public abstract void Serialize(Serializer? serializer, SerializeContext ctx);
-        public abstract void Deserialize(Serializer? serializer, SerializeContext ctx);
+        public abstract void Serialize(Serializer serializer, SerializeContext ctx);
+        public abstract void Deserialize(Serializer serializer, SerializeContext ctx);
 
         void ISavable.SetDirty(bool dirty, bool _)
         {
@@ -164,7 +163,7 @@ namespace Salvavida
 
     public abstract class ObservableCollectionSavable<TCol, TElem> : ObservableCollection<TCol, TElem>
         where TCol : ObservableCollectionSavable<TCol, TElem>
-        where TElem : ISavable
+        where TElem : ISavable?
     {
         protected ObservableCollectionSavable(string svid, bool saveSeparately) : base(svid, saveSeparately)
         {

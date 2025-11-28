@@ -245,10 +245,11 @@ namespace Salvavida.Generator
                 if (saveSeparately)
                 {
                     _infoStore!.separatedProperties.Add(propertyName);
-                    _infoStore!.internalSeparatedMembers.Add(fieldName);
                 }
-
-                WriteProperty(sb, ctx, propertyName, fieldName, typeSymbol, saveSeparately);
+                var isSavable = IsTypeISavable(typeSymbol);
+                if (isSavable)
+                    _infoStore!.savableMembers.Add(propertyName);
+                WriteProperty(sb, ctx, propertyName, fieldName, typeSymbol, isSavable, saveSeparately);
             }
             else
             {
@@ -257,10 +258,12 @@ namespace Salvavida.Generator
                 {
                     //var savableElement = CodeGenHelper.TryGetAttribute(ctx, , SalvavidaGenerator.SALVAVIDA_ATTRIBUTE)
                     // TODO: to check if elemTypeSymbols.Last() implemented ISavable or not
-                    _infoStore!.separatedCollections.Add(propertyName, false);
-                    _infoStore!.internalSeparatedMembers.Add(fieldName);
+                    _infoStore!.separatedCollections.Add(propertyName);
                 }
+                else
+                    _infoStore!.nonSeparatedCollections.Add(propertyName);
 
+                _infoStore!.savableMembers.Add(propertyName);
                 var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols);
                 WriteCollectionProperty(sb, ctx, propertyName, fieldName,
                     typeSymbol, collectionTypeString, saveSeparately);
@@ -282,7 +285,7 @@ namespace Salvavida.Generator
             return result;
         }
 
-        protected virtual void WriteProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName, ITypeSymbol typeSymbol, bool saveSeparately)
+        protected virtual void WriteProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName, ITypeSymbol typeSymbol, bool isSavable, bool saveSeparately)
         {
             var typeFullName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             AddAttributePreventSerialize(sb, false);
@@ -290,17 +293,7 @@ namespace Salvavida.Generator
             var savabeType = IsTypeISavable(typeSymbol);
             using (sb.CurlyBracketsScope())
             {
-                sb.WriteLine("get");
-                using (sb.CurlyBracketsScope())
-                {
-                    if (savabeType)
-                    {
-                        sb.WriteLine($"if ({fieldName} is ISavable sv && sv.SvParent == null)");
-                        sb.WriteLine($"    WatchChild({fieldName}, \"{propertyName}\");");
-                    }
-
-                    sb.WriteLine($"return {fieldName};");
-                }
+                sb.WriteLine($"get => {fieldName};");
 
                 sb.WriteLine("set");
                 using (sb.CurlyBracketsScope())
@@ -370,7 +363,7 @@ namespace Salvavida.Generator
                 CollectionType.Dictionary => 1,
                 _ => throw new NotSupportedException(),
             };
-            var isSavable = CodeGenHelper.GetIsSavable(typeSymbols[typeIndex]);
+            var isSavable = IsTypeISavable(typeSymbols[typeIndex]);
             var savableStr = isSavable ? "Savable" : "";
 
             return colType switch
@@ -402,7 +395,7 @@ namespace Salvavida.Generator
             sb.WriteLine("private bool _svIsDirty = true;");
             sb.WriteLine();
             AddAttributePreventSerialize(sb, true);
-            sb.WriteLine("public bool IsDirty => _svIsDirty;");
+            sb.WriteLine("public bool IsSelfDirty => _svIsDirty;");
             AddAttributePreventSerialize(sb, true);
             sb.WriteLine("public string SvId");
             using (sb.CurlyBracketsScope())
@@ -423,7 +416,6 @@ namespace Salvavida.Generator
                     }
                 }
             }
-            sb.WriteLine("public string SvIdDeserialized { get; private set; }");
             sb.WriteLine();
 
             sb.WriteLine("partial void OnSvIdChanging(ref string svid);");
@@ -433,12 +425,33 @@ namespace Salvavida.Generator
 
         protected virtual void WriteImplementationsFoot(ScriptBuilder sb, CodeGenerationContext ctx)
         {
+            sb.WriteLine("public bool IsDirty");
+            using (sb.CurlyBracketsScope())
+            {
+                var names = new List<string>();
+                sb.Write("get => _svIsDirty");
+                if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
+                {
+                    sb.Write(" || ", true);
+                }
+                foreach (var propName in _infoStore!.separatedProperties)
+                {
+                    names.Add($"({propName}?.IsDirty ?? false)");
+                }
+                foreach (var propName in _infoStore.separatedCollections)
+                {
+                    names.Add($"({propName}?.IsDirty ?? false)");
+                }
+                sb.Write(string.Join(" || ", names), true);
+                sb.WriteLine(";", true);
+            }
+
             sb.WriteLine("void ISavable.SetParent(ISavable parent)");
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("if (Equals(SvParent, parent)) return;");
                 sb.WriteLine("SvParent = parent;");
-                sb.WriteLine("(this as ISavable).SetDirty(true, true);");
+                //sb.WriteLine("(this as ISavable).SetDirty(true, true);");
             }
 
             sb.WriteLine();
@@ -447,21 +460,18 @@ namespace Salvavida.Generator
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("_svIsDirty = dirty;");
-                if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
+                if (_infoStore!.savableMembers.Count > 0)
                 {
                     sb.WriteLine("if (recursively)");
                     {
                         using (sb.CurlyBracketsScope())
                         {
-                            foreach (var prop in _infoStore!.separatedProperties)
+                            foreach (var prop in _infoStore!.savableMembers)
                             {
                                 var fieldName = GetOriginName(prop);
+                                if (_infoStore.separatedCollections.Contains(prop) || _infoStore.nonSeparatedCollections.Contains(prop))
+                                    fieldName += "Ob";
                                 sb.WriteLine($"({fieldName} as ISavable)?.SetDirty(dirty, true);");
-                            }
-
-                            foreach (var kvp in _infoStore!.separatedCollections)
-                            {
-                                sb.WriteLine($"({kvp.Key} as ISavable)?.SetDirty(dirty, true);");
                             }
                         }
                     }
@@ -470,37 +480,37 @@ namespace Salvavida.Generator
 
             sb.WriteLine();
 
-            sb.Write("private static readonly string[] _separatedProperties = ");
-            if (_infoStore!.separatedProperties.Count > 0)
-            {
-                sb.Write("new[] { ", true);
-                foreach (var propName in _infoStore.separatedProperties)
-                {
-                    sb.Write("\"", true);
-                    sb.Write(propName, true);
-                    sb.Write("\", ", true);
-                }
+            //sb.Write("private static readonly string[] _separatedProperties = ");
+            //if (_infoStore!.separatedProperties.Count > 0)
+            //{
+            //    sb.Write("new[] { ", true);
+            //    foreach (var propName in _infoStore.separatedProperties)
+            //    {
+            //        sb.Write("\"", true);
+            //        sb.Write(propName, true);
+            //        sb.Write("\", ", true);
+            //    }
 
-                sb.WriteLine("};", true);
-            }
-            else
-                sb.WriteLine("null;", true);
+            //    sb.WriteLine("};", true);
+            //}
+            //else
+            //    sb.WriteLine("null;", true);
 
-            sb.Write("private static readonly string[] _separatedCollections = ");
-            if (_infoStore!.separatedCollections.Count > 0)
-            {
-                sb.Write("new[] { ", true);
-                foreach (var kvp in _infoStore.separatedCollections)
-                {
-                    sb.Write("\"", true);
-                    sb.Write(kvp.Key, true);
-                    sb.Write("\", ", true);
-                }
+            //sb.Write("private static readonly string[] _separatedCollections = ");
+            //if (_infoStore!.separatedCollections.Count > 0)
+            //{
+            //    sb.Write("new[] { ", true);
+            //    foreach (var name in _infoStore.separatedCollections)
+            //    {
+            //        sb.Write("\"", true);
+            //        sb.Write(name, true);
+            //        sb.Write("\", ", true);
+            //    }
 
-                sb.WriteLine("};", true);
-            }
-            else
-                sb.WriteLine("null;", true);
+            //    sb.WriteLine("};", true);
+            //}
+            //else
+            //    sb.WriteLine("null;", true);
 
             sb.WriteLine("private void OnPropertyChanged<T>(T value, string propName)");
             using (sb.CurlyBracketsScope())
@@ -517,7 +527,25 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine("if (value is not ISavable sv || string.IsNullOrEmpty(sv.SvId))");
                 sb.WriteLine("    return;");
-                sb.WriteLine("_svIsDirty = true;");
+                var localSavables = _infoStore!.savableMembers.Except(_infoStore.separatedProperties).Except(_infoStore.separatedCollections).ToArray();
+                if (localSavables.Length > 0)
+                {
+                    sb.WriteLine("switch(propName)");
+                    using (sb.CurlyBracketsScope())
+                    {
+                        foreach (var propName in localSavables)
+                        {
+                            sb.WriteLine($"case \"{propName}\":");
+                        }
+                        using (sb.CurlyBracketsScope())
+                        {
+                            sb.WriteLine("_svIsDirty = true;");
+                            sb.WriteLine("break;");
+                        }
+                        sb.WriteLine("default: break;");
+                    }
+                }
+                //sb.WriteLine("_svIsDirty = true;");
                 //sb.WriteLine("this.TrySave(sv.SvId, sv, typeof(T), _separatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, sv.SvId);");
             }
@@ -547,43 +575,70 @@ namespace Salvavida.Generator
 
             sb.WriteLine();
 
-            sb.WriteLine("void ISavable.BeforeSerialize(Serializer serializer, SerializeContext ctx)");
+            sb.WriteLine("public void Serialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())
             {
-                sb.WriteLine("OnBeforeSerialize(serializer, ctx);");
+                sb.WriteLine("using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);");
+                sb.WriteLine("var isSelfDirty = IsSelfDirty;");
+                sb.WriteLine("if (isSelfDirty)");
+                using (sb.CurlyBracketsScope())
+                {
+                    sb.WriteLine("OnBeforeSerialize(serializer, ctx);");
+                    sb.WriteLine("serializer.SaveObject(this, ctx);");
+                }
+
+                foreach (var prop in _infoStore!.separatedProperties)
+                {
+                    var fieldName = GetOriginName(prop);
+                    sb.WriteLine($"{fieldName}?.TrySerialize(serializer, ctx);");
+                }
+
+                foreach (var name in _infoStore!.separatedCollections)
+                {
+                    var fieldName = GetOriginName(name);
+                    sb.WriteLine($"{fieldName}Ob?.TrySerialize(serializer, ctx);");
+                }
+
+                sb.WriteLine("if (isSelfDirty) OnAfterSerialize(serializer, ctx);");
             }
+
+            //sb.WriteLine("void ISavable.BeforeSerialize(Serializer serializer, SerializeContext ctx)");
+            //using (sb.CurlyBracketsScope())
+            //{
+            //    sb.WriteLine("OnBeforeSerialize(serializer, ctx);");
+            //}
 
             sb.WriteLine("partial void OnBeforeSerialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
 
-            sb.WriteLine("void ISavable.AfterSerialize(Serializer serializer, SerializeContext ctx)");
-            using (sb.CurlyBracketsScope())
-            {
-                if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
-                {
-                    foreach (var prop in _infoStore!.separatedProperties)
-                    {
-                        var fieldName = GetOriginName(prop);
-                        var propType = _infoStore.propTypeMappings[fieldName];
-                        //sb.WriteLine($"this.TrySaveSeparatedProperty(serializer, ctx, \"{prop}\", {fieldName}, typeof({propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}));");
-                    }
+            //sb.WriteLine("void ISavable.AfterSerialize(Serializer serializer, SerializeContext ctx)");
+            //using (sb.CurlyBracketsScope())
+            //{
+            //    if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
+            //    {
+            //        foreach (var prop in _infoStore!.separatedProperties)
+            //        {
+            //            var fieldName = GetOriginName(prop);
+            //            var propType = _infoStore.propTypeMappings[fieldName];
+            //            //sb.WriteLine($"this.TrySaveSeparatedProperty(serializer, ctx, \"{prop}\", {fieldName}, typeof({propType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}));");
+            //        }
 
-                    foreach (var kvp in _infoStore!.separatedCollections)
-                    {
-                        //sb.WriteLine($"{kvp.Key}?.TrySave(serializer, ctx);");
-                    }
-                }
+            //        foreach (var kvp in _infoStore!.separatedCollections)
+            //        {
+            //            //sb.WriteLine($"{kvp.Key}?.TrySave(serializer, ctx);");
+            //        }
+            //    }
 
-                foreach (var kvp in _infoStore!.propTypeMappings)
-                {
-                    if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
-                        continue;
-                    sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterSerialize(serializer, ctx,  \"{_infoStore!.nameMappings[kvp.Key]}\");");
-                }
+            //    foreach (var kvp in _infoStore!.propTypeMappings)
+            //    {
+            //        if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
+            //            continue;
+            //        sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterSerialize(serializer, ctx,  \"{_infoStore!.nameMappings[kvp.Key]}\");");
+            //    }
 
-                sb.WriteLine("OnAfterSerialize(serializer, ctx);");
-                sb.WriteLine("SvIdDeserialized = null;");
-            }
+            //    sb.WriteLine("OnAfterSerialize(serializer, ctx);");
+            //    sb.WriteLine("SvIdDeserialized = null;");
+            //}
 
             sb.WriteLine("partial void OnAfterSerialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
@@ -591,49 +646,41 @@ namespace Salvavida.Generator
             sb.WriteLine("void ISavable.AfterDeserialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())
             {
-                if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
+                foreach (var prop in _infoStore!.separatedProperties)
                 {
-                    foreach (var prop in _infoStore!.separatedProperties)
-                    {
-                        var fieldName = GetOriginName(prop);
-                        sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\", PathBuilder.Type.Property);");
-                    }
-
-                    foreach (var kvp in _infoStore!.separatedCollections)
-                    {
-                        var fieldName = GetOriginName(kvp.Key);
-                        var (collectionType, typeParameters) = _infoStore!.collectionParameterMappings[fieldName];
-                        var typeParametersStr = string.Join(", ", typeParameters.Select(symbol => symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
-                        sb.Write(fieldName);
-                        sb.Write(" = serializer.", true);
-                        sb.Write(collectionType switch
-                        {
-                            CollectionType.Array => $"ReadArray",
-                            CollectionType.List => $"ReadList",
-                            CollectionType.Dictionary => $"ReadDict",
-                            _ => throw new NotSupportedException("CollectionType: " + collectionType.ToString()),
-                        }, true);
-
-                        var checkIsSavableSyntax = $"SvHelper.CheckIsSavable<{typeParameters.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>()";
-
-                        sb.WriteLine($"<{typeParametersStr}>(ctx, \"{kvp.Key}\", {checkIsSavableSyntax});", true);
-                        sb.WriteLine($"({kvp.Key} as ISavable).SetDirty(false, false);");
-                    }
+                    var fieldName = GetOriginName(prop);
+                    sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\", PathBuilder.Type.Property);");
+                    sb.WriteLine($"WatchChild({fieldName}, \"{prop}\");");
                 }
 
-                foreach (var kvp in _infoStore!.propTypeMappings)
-                {
-                    if (!_infoStore.savableTypes[kvp.Value] || _infoStore.internalSeparatedMembers.Contains(kvp.Key))
-                        continue;
-                    sb.WriteLine($"({kvp.Key} as ISavable).PropertyAfterDeserialize(serializer, ctx, \"{_infoStore!.nameMappings[kvp.Key]}\");");
-                }
+                WriteLoadCollections(sb, _infoStore!.separatedCollections, true);
+                WriteLoadCollections(sb, _infoStore!.nonSeparatedCollections, false);
 
                 sb.WriteLine("OnAfterDeserialize(serializer, ctx);");
-                sb.WriteLine("SvIdDeserialized = SvId;");
             }
 
             sb.WriteLine("partial void OnAfterDeserialize(Serializer serializer, SerializeContext ctx);");
             sb.WriteLine();
+        }
+
+        private void WriteLoadCollections(ScriptBuilder sb, HashSet<string> collections, bool isSeparated)
+        {
+            foreach (var name in collections)
+            {
+                var fieldName = GetOriginName(name);
+                var (collectionType, typeParameters) = _infoStore!.collectionParameterMappings[fieldName];
+                var typeIndex = collectionType switch
+                {
+                    CollectionType.Array or CollectionType.List => 0,
+                    CollectionType.Dictionary => 1,
+                    _ => throw new NotSupportedException("CollectionType: " + collectionType.ToString()),
+                };
+                var isSavable = IsTypeISavable(typeParameters[typeIndex]);
+                var savableStr = isSavable ? "Savable" : "";
+                var typeParametersStr = string.Join(", ", typeParameters.Select(symbol => symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+                sb.WriteLine($"{fieldName}Ob = serializer.LoadCollection{savableStr}(ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName});");
+                sb.WriteLine($"WatchChild({fieldName}Ob, \"{name}\");");
+            }
         }
 
         protected virtual void AddAttributePreventSerialize(ScriptBuilder sb, bool isOnProperty)

@@ -8,22 +8,23 @@ namespace Salvavida
 {
     public sealed class ObservableList<T> : ObservableCollection<ObservableList<T>, T>, IList<T?>, IReadOnlyList<T?>, IList, ICollectionWrapper<List<T?>>
     {
-        public ObservableList(string propName, List<T?> src, bool saveSeparately)
+        public ObservableList(string propName, List<T?>? src, bool saveSeparately)
             : base(propName, saveSeparately)
         {
-            _list = default!;
             //_orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
             SwapSource(src, false);
         }
 
-        private List<T?> _list;
+        private List<T?>? _list;
         //private readonly bool _orderMatters;
 
         public T? this[int index]
         {
-            get => _list[index];
+            get => _list == null ? throw new NullReferenceException(nameof(_list)) : _list[index];
             set
             {
+                if (_list == null)
+                    throw new NullReferenceException(nameof(_list));
                 var oldValue = _list[index];
                 _list[index] = value;
                 OnItemSet(value, index);
@@ -32,11 +33,11 @@ namespace Salvavida
             }
         }
 
-        object? IList.this[int index] { get => _list[index]; set => this[index] = (T?)value; }
+        object? IList.this[int index] { get => this[index]; set => this[index] = (T?)value; }
 
-        public int Count => _list.Count;
+        public int Count => _list?.Count ?? 0;
 
-        int ICollection.Count => _list.Count;
+        int ICollection.Count => _list?.Count ?? 0;
 
         bool IList.IsFixedSize => false;
 
@@ -44,13 +45,13 @@ namespace Salvavida
 
         bool IList.IsReadOnly => false;
 
-        bool ICollection.IsSynchronized => ((ICollection)_list).IsSynchronized;
+        bool ICollection.IsSynchronized => ((ICollection?)_list)?.IsSynchronized ?? false;
 
-        object ICollection.SyncRoot => ((ICollection)_list).SyncRoot;
+        object? ICollection.SyncRoot => ((ICollection?)_list)?.SyncRoot ?? null;
 
-        public List<T?> RetrieveSource() => _list;
+        public List<T?>? RetrieveSource() => _list;
 
-        public object RetrieveSourceRaw() => _list;
+        public object? RetrieveSourceRaw() => _list;
 
         public Type CollectionType => typeof(List<T?>);
 
@@ -58,7 +59,7 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            serializer.SaveList(_list, ctx, SvId);
+            serializer.SaveObject(_list, ctx, SvId, PathBuilder.Type.Property);
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
@@ -69,13 +70,13 @@ namespace Salvavida
             SwapSource(list);
         }
 
-        public void SwapSource(List<T?> list)
+        public void SwapSource(List<T?>? list)
         {
             _isDirty = true;
             SwapSource(list, true);
         }
 
-        private void SwapSource(List<T?> list, bool notifyChanges)
+        private void SwapSource(List<T?>? list, bool notifyChanges)
         {
             if (_list != null)
             {
@@ -107,6 +108,8 @@ namespace Salvavida
 
         protected override CollectionChangeInfo<T?> CreateSaveAllEvent()
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             return CollectionChangeInfo<T?>.Add(_list, 0);
         }
 
@@ -124,6 +127,8 @@ namespace Salvavida
 
         public void Add(T? item)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             _list.Add(item);
             OnItemSet(item, index);
@@ -138,6 +143,8 @@ namespace Salvavida
 
         public void AddRange(IList<T?> collection)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             _list.AddRange(collection);
             for (var i = 0; i < collection.Count; i++)
@@ -159,6 +166,8 @@ namespace Salvavida
 
         public void Clear()
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             OnCollectionChange(CollectionChangeInfo<T?>.Reset());
             foreach (var item in _list)
             {
@@ -169,26 +178,28 @@ namespace Salvavida
 
         void IList.Clear() => Clear();
 
-        public bool Contains(T? item) => _list.Contains(item);
+        public bool Contains(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.Contains(item);
 
         bool IList.Contains(object value) => Contains((T?)value);
 
-        public void CopyTo(T?[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
+        public void CopyTo(T?[] array, int arrayIndex) => _list?.CopyTo(array, arrayIndex);
 
-        void ICollection.CopyTo(Array array, int index) => ((ICollection)_list).CopyTo(array, index);
+        void ICollection.CopyTo(Array array, int index) => ((ICollection?)_list)?.CopyTo(array, index);
 
-        public List<T?>.Enumerator GetEnumerator() => _list.GetEnumerator();
+        public List<T?>.Enumerator GetEnumerator() => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.GetEnumerator();
 
         IEnumerator<T?> IEnumerable<T?>.GetEnumerator() => GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        public int IndexOf(T? item) => _list.IndexOf(item);
+        public int IndexOf(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.IndexOf(item);
 
         int IList.IndexOf(object value) => IndexOf((T?)value);
 
         public void Insert(int index, T? item)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             _list.Insert(index, item);
             OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
@@ -198,6 +209,8 @@ namespace Salvavida
 
         public void InsertRange(int index, IList<T?> collection)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             _list.InsertRange(index, collection);
             for (var i = 0; i < collection.Count; i++)
             {
@@ -209,6 +222,8 @@ namespace Salvavida
 
         public bool Remove(T? item)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var index = _list.IndexOf(item);
             if (index >= 0)
             {
@@ -224,6 +239,8 @@ namespace Salvavida
 
         public void RemoveRange(int index, int count)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var arr = new T?[count];
             _list.CopyTo(index, arr, 0, count);
             OnCollectionChange(CollectionChangeInfo<T?>.Remove(arr, index));
@@ -236,6 +253,8 @@ namespace Salvavida
 
         public void RemoveAt(int index)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var item = _list[index];
             _list.RemoveAt(index);
             OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
@@ -246,6 +265,8 @@ namespace Salvavida
 
         public void Move(int oldIndex, int newIndex)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var item = _list[oldIndex];
             RemoveAt(oldIndex);
             Insert(newIndex, item);
@@ -255,16 +276,15 @@ namespace Salvavida
     public sealed class ObservableListSavable<T> : ObservableCollectionSavable<ObservableListSavable<T>, T>, IList<T?>, IReadOnlyList<T?>, IList, ICollectionWrapper<List<T?>>
         where T : ISavable
     {
-        public ObservableListSavable(string propName, List<T?> src, bool saveSeparately)
+        public ObservableListSavable(string propName, List<T?>? src, bool saveSeparately)
            : base(propName, saveSeparately)
         {
-            _list = default!;
             //_orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
             SwapSource(src, false);
         }
 
-        private List<T?> _list;
-        private string?[]? _idsOnDeserialized;
+        private List<T?>? _list;
+        private string[]? _idsOnDeserialized;
         //private readonly bool _orderMatters;
 
         public override bool IsDirty
@@ -286,12 +306,14 @@ namespace Salvavida
                 return false;
             }
         }
-        
+
         public T? this[int index]
         {
-            get => _list[index];
+            get => _list == null ? throw new NullReferenceException(nameof(_list)) : _list[index];
             set
             {
+                if (_list == null)
+                    throw new NullReferenceException(nameof(_list));
                 var oldValue = _list[index];
                 _list[index] = value;
                 OnItemSet(value, index);
@@ -300,25 +322,25 @@ namespace Salvavida
             }
         }
 
-        object? IList.this[int index] { get => _list[index]; set => this[index] = (T?)value; }
+        object? IList.this[int index] { get => this[index]; set => this[index] = (T?)value; }
 
-        public int Count => _list.Count;
+        public int Count => _list?.Count ?? 0;
 
         bool IList.IsFixedSize => false;
 
-        int ICollection.Count => _list.Count;
+        int ICollection.Count => _list?.Count ?? 0;
 
         bool ICollection<T?>.IsReadOnly => false;
 
         bool IList.IsReadOnly => false;
 
-        bool ICollection.IsSynchronized => ((ICollection)_list).IsSynchronized;
+        bool ICollection.IsSynchronized => ((ICollection?)_list)?.IsSynchronized ?? false;
 
-        object ICollection.SyncRoot => ((ICollection)_list).SyncRoot;
+        object? ICollection.SyncRoot => ((ICollection?)_list)?.SyncRoot ?? null;
 
-        public List<T?> RetrieveSource() => _list;
+        public List<T?>? RetrieveSource() => _list;
 
-        public object RetrieveSourceRaw() => _list;
+        public object? RetrieveSourceRaw() => _list;
 
         public Type CollectionType => typeof(List<T?>);
 
@@ -326,20 +348,35 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
+
             var tempIds = SvHelper.idListPool.Get();
             try
             {
-                foreach (var elem in _list)
+                if (_list != null)
                 {
-                    serializer.Save(elem, ctx, PathBuilder.Type.Collection);
-                    tempIds.Add(elem.SvId);
-                }
-                serializer.SaveList(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
-                foreach (var oldId in _idsOnDeserialized)
-                {
-                    if (tempIds.IndexOf(oldId) < 0)
+                    foreach (var elem in _list)
                     {
-                        serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                        if (elem == null)
+                            continue;
+                        if (string.IsNullOrEmpty(elem.SvId))
+                            throw new ArgumentNullException("elem.SvId");
+                        serializer.SaveObject(elem, ctx, elem.SvId, PathBuilder.Type.Collection);
+                        tempIds.Add(elem.SvId);
+                    }
+                    serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                }
+                else
+                {
+                    serializer.DeleteObject(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                }
+                if (_idsOnDeserialized != null)
+                {
+                    foreach (var oldId in _idsOnDeserialized)
+                    {
+                        if (tempIds.IndexOf(oldId) < 0)
+                        {
+                            serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                        }
                     }
                 }
             }
@@ -355,8 +392,8 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadObject<string?[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
-            List<T?> list;
+            var tempIds = serializer.ReadObject<string[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+            List<T?>? list;
             if (tempIds == null || tempIds.Length == 0)
                 list = null;
             else
@@ -371,13 +408,13 @@ namespace Salvavida
             SwapSource(list);
         }
 
-        public void SwapSource(List<T?> list)
+        public void SwapSource(List<T?>? list)
         {
             _isDirty = true;
             SwapSource(list, true);
         }
 
-        private void SwapSource(List<T?> list, bool notifyChanges)
+        private void SwapSource(List<T?>? list, bool notifyChanges)
         {
             if (_list != null)
             {
@@ -409,11 +446,15 @@ namespace Salvavida
 
         protected override CollectionChangeInfo<T?> CreateSaveAllEvent()
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             return CollectionChangeInfo<T?>.Add(_list, 0);
         }
 
         public void Add(T? item)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             _list.Add(item);
             OnItemSet(item, index);
@@ -428,6 +469,8 @@ namespace Salvavida
 
         public void AddRange(IList<T?> collection)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             _list.AddRange(collection);
             for (var i = 0; i < collection.Count; i++)
@@ -449,6 +492,8 @@ namespace Salvavida
 
         public void Clear()
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             OnCollectionChange(CollectionChangeInfo<T?>.Reset());
             foreach (var item in _list)
             {
@@ -459,26 +504,28 @@ namespace Salvavida
 
         void IList.Clear() => Clear();
 
-        public bool Contains(T? item) => _list.Contains(item);
+        public bool Contains(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.Contains(item);
 
         bool IList.Contains(object value) => Contains((T?)value);
 
-        public void CopyTo(T?[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
+        public void CopyTo(T?[] array, int arrayIndex) => _list?.CopyTo(array, arrayIndex);
 
-        void ICollection.CopyTo(Array array, int index) => ((ICollection)_list).CopyTo(array, index);
+        void ICollection.CopyTo(Array array, int index) => ((ICollection?)_list)?.CopyTo(array, index);
 
-        public List<T?>.Enumerator GetEnumerator() => _list.GetEnumerator();
+        public List<T?>.Enumerator GetEnumerator() => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.GetEnumerator();
 
         IEnumerator<T?> IEnumerable<T?>.GetEnumerator() => GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        public int IndexOf(T? item) => _list.IndexOf(item);
+        public int IndexOf(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.IndexOf(item);
 
         int IList.IndexOf(object value) => IndexOf((T?)value);
 
         public void Insert(int index, T? item)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             _list.Insert(index, item);
             OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
@@ -488,6 +535,8 @@ namespace Salvavida
 
         public void InsertRange(int index, IList<T?> collection)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             _list.InsertRange(index, collection);
             for (var i = 0; i < collection.Count; i++)
             {
@@ -499,6 +548,8 @@ namespace Salvavida
 
         public bool Remove(T? item)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var index = _list.IndexOf(item);
             if (index >= 0)
             {
@@ -514,6 +565,8 @@ namespace Salvavida
 
         public void RemoveRange(int index, int count)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var arr = new T?[count];
             _list.CopyTo(index, arr, 0, count);
             OnCollectionChange(CollectionChangeInfo<T?>.Remove(arr, index));
@@ -526,6 +579,8 @@ namespace Salvavida
 
         public void RemoveAt(int index)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var item = _list[index];
             _list.RemoveAt(index);
             OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
@@ -536,6 +591,8 @@ namespace Salvavida
 
         public void Move(int oldIndex, int newIndex)
         {
+            if (_list == null)
+                throw new NullReferenceException(nameof(_list));
             var item = _list[oldIndex];
             RemoveAt(oldIndex);
             Insert(newIndex, item);

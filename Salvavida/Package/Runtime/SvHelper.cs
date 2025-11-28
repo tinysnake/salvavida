@@ -82,6 +82,13 @@ namespace Salvavida
             return null;
         }
 
+        public static void TrySerialize<T>(this T savable, Serializer serializer, SerializeContext ctx) where T : ISavable
+        {
+            if (!savable.IsDirty)
+                return;
+            savable.Serialize(serializer, ctx);
+        }
+
         //public static void TrySaveSeparatedProperty<TParent, T>(this TParent? savable, Serializer serializer, SerializeContext ctx, string propName, T? value, Type type) where TParent : ISavable
         //{
         //    if (savable == null)
@@ -160,21 +167,21 @@ namespace Salvavida
             }
         }
 
-        public static void PropertyAfterSerialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
-        {
-            if (sv == null)
-                return;
-            var path = ctx.Path;
-            path.Push(propName, PathBuilder.Type.Property);
-            try
-            {
-                sv.AfterSerialize(serializer, ctx);
-            }
-            finally
-            {
-                path.Pop();
-            }
-        }
+        //public static void PropertyAfterSerialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
+        //{
+        //    if (sv == null)
+        //        return;
+        //    var path = ctx.Path;
+        //    path.Push(propName, PathBuilder.Type.Property);
+        //    try
+        //    {
+        //        sv.AfterSerialize(serializer, ctx);
+        //    }
+        //    finally
+        //    {
+        //        path.Pop();
+        //    }
+        //}
 
         public static void PropertyAfterDeserialize<TParent>(this TParent? sv, Serializer serializer, SerializeContext ctx, string propName) where TParent : ISavable
         {

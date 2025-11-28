@@ -2,6 +2,10 @@ namespace Salvavida
 {
     public class SerializeContext
     {
+        public SerializeContext()
+        {
+            Path = default!;
+        }
 
         public PathBuilder Path { get; internal set; }
         public bool UniqueLocked { get; internal set; }

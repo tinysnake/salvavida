@@ -79,6 +79,8 @@ namespace Salvavida
 
         public PushScope UsePush(ReadOnlySpan<char> segment, Type type)
         {
+            if(segment.IsEmpty || segment.IsWhiteSpace())
+                throw new ArgumentNullException(nameof(segment));
             var scope = new PushScope(this, segment, type);
             return scope;
         }

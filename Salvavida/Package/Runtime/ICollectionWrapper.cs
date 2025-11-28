@@ -5,12 +5,12 @@ namespace Salvavida
     public interface ICollectionWrapper
     {
         Type CollectionType { get; }
-        object RetrieveSourceRaw();
+        object? RetrieveSourceRaw();
     }
 
     public interface ICollectionWrapper<TCollection> : ICollectionWrapper
     {
-        TCollection RetrieveSource();
-        void SwapSource(TCollection source);
+        TCollection? RetrieveSource();
+        void SwapSource(TCollection? source);
     }
 }
