@@ -53,6 +53,21 @@ namespace Salvavida
 
         public Type CollectionType => typeof(T?[]);
 
+        public override void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            serializer.SaveArray(_arr, ctx, SvId);
+        }
+
+        public override void Deserialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+            var arr = serializer.ReadObject<T?[]>(ctx);
+            SwapSource(arr);
+        }
+
         public void SwapSource(T?[] array)
         {
             _isDirty = true;
@@ -89,21 +104,6 @@ namespace Salvavida
             if (item is ISavable sv)
                 sv.SvId ??= DefaultIdGenerator.Default.GetId();
             TryWatch(item);
-        }
-
-        public override void Serialize(Serializer serializer, SerializeContext ctx)
-        {
-            if (!SaveSeparately)
-                return;
-            serializer.SaveArray(_arr, ctx, SvId);
-        }
-
-        public override void Deserialize(Serializer serializer, SerializeContext ctx)
-        {
-            if (!SaveSeparately)
-                return;
-            var arr = serializer.ReadArray<T>(ctx, SvId);
-            SwapSource(arr);
         }
 
         protected override void OnChildChanged(T child, string _)
@@ -222,6 +222,26 @@ namespace Salvavida
         private T?[] _arr;
         private string[]? _idsOnDeserialized;
 
+        public override bool IsDirty
+        {
+            get
+            {
+                if (IsSelfDirty)
+                    return true;
+                if (_arr == null)
+                    return false;
+                foreach (var item in _arr)
+                {
+                    if (item == null)
+                        continue;
+                    if (item.IsDirty)
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
         public T? this[int index]
         {
             get => _arr[index];
@@ -288,13 +308,13 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadList<string?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+            var tempIds = serializer.ReadObject<string?[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
             T[] arr;
-            if (tempIds == null || tempIds.Count == 0)
+            if (tempIds == null || tempIds.Length == 0)
                 arr = null;
             else
             {
-                _idsOnDeserialized = tempIds.ToArray();
+                _idsOnDeserialized = tempIds;
                 arr = new T[_idsOnDeserialized.Length];
                 for (var i = 0; i < _idsOnDeserialized.Length; i++)
                 {

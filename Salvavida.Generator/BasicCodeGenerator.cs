@@ -356,7 +356,6 @@ namespace Salvavida.Generator
                 sb.WriteLine("    return;");
                 sb.WriteLine($"{fieldName}Ob = new {collectionTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
                 sb.WriteLine($"WatchChild({fieldName}Ob, \"{propertyName}\");");
-                sb.WriteLine($"this.SetChild({fieldName}Ob);");
             }
 
             sb.WriteLine();
@@ -547,19 +546,6 @@ namespace Salvavida.Generator
             }
 
             sb.WriteLine();
-
-            //sb.WriteLine("public void Invalidate(bool recursively)");
-            //using (sb.CurlyBracketsScope())
-            //{
-            //    sb.WriteLine("(this as ISavable).SetDirty(true, recursively);");
-            //    sb.WriteLine("var serializer = this.GetSerializer();");
-            //    sb.WriteLine("if (serializer == null || string.IsNullOrEmpty(SvId))");
-            //    sb.WriteLine("    return;");
-            //    if (CodeGenHelper.GetIsSavableRoot(ctx.TypeSymbol, false))
-            //        sb.WriteLine("serializer.FreshSave(this);");
-            //    else
-            //        sb.WriteLine("PropertyChanged?.Invoke(this, SvId);");
-            //}
 
             sb.WriteLine("void ISavable.BeforeSerialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())

@@ -372,17 +372,17 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(svid));
             using var locker = BeginFreshAction(out var ctx);
             using var __s = ctx.Path.UsePush(svid, PathBuilder.Type.Property);
-            var result = DoRead<T>(ctx);
+            var result = ReadObject<T>(ctx);
             return result;
         }
 
         public T? ReadObject<T>(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type type)
         {
             using var __s = ctx.Path.UsePush(propName, type);
-            return DoRead<T>(ctx);
+            return ReadObject<T>(ctx);
         }
 
-        protected virtual T? DoRead<T>(SerializeContext ctx)
+        public virtual T? ReadObject<T>(SerializeContext ctx)
         {
             var result = DoReadImpl<T>(ctx);
             if (result is ISavable sv)
@@ -397,6 +397,42 @@ namespace Salvavida
         }
 
         protected abstract T? DoReadImpl<T>(SerializeContext ctx);
+
+        public ObservableArraySavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T[] src) where T : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(this, ctx);
+                src = ob.RetrieveSource();
+            }
+            return ob;
+        }
+
+        public ObservableListSavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T> src) where T : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(this, ctx);
+                src = ob.RetrieveSource();
+            }
+            return ob;
+        }
+
+        public ObservableDictionarySavable<TKey, TValue> LoadCollectionSavable<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src) where TValue : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableDictionarySavable<TKey, TValue>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(this, ctx);
+                src = ob.RetrieveSource();
+            }
+            return ob;
+        }
 
         public ObservableArray<T> LoadCollection<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T[] src)
         {
@@ -434,29 +470,29 @@ namespace Salvavida
             return ob;
         }
 
-        public T?[]? ReadArray<T>(SerializeContext ctx, ReadOnlySpan<char> propName)
-        {
-            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            return ReadArray<T>(ctx);
-        }
-
-        public abstract T?[]? ReadArray<T>(SerializeContext ctx);
-
-        public List<T?>? ReadList<T>(SerializeContext ctx, ReadOnlySpan<char> propName)
-        {
-            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            return ReadList<T>(ctx);
-        }
-
-        public abstract List<T?>? ReadList<T>(SerializeContext ctx);
-
-        public Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName)
-        {
-            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            return ReadDict<TKey, TValue>(ctx);
-        }
-
-        public abstract Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx);
+        // public T?[]? ReadArray<T>(SerializeContext ctx, ReadOnlySpan<char> propName)
+        // {
+        //     using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+        //     return ReadArray<T>(ctx);
+        // }
+        //
+        // public abstract T?[]? ReadArray<T>(SerializeContext ctx);
+        //
+        // public List<T?>? ReadList<T>(SerializeContext ctx, ReadOnlySpan<char> propName)
+        // {
+        //     using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+        //     return ReadList<T>(ctx);
+        // }
+        //
+        // public abstract List<T?>? ReadList<T>(SerializeContext ctx);
+        //
+        // public Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName)
+        // {
+        //     using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+        //     return ReadDict<TKey, TValue>(ctx);
+        // }
+        //
+        // public abstract Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx);
 
         public void FreshDelete<T>(T data) where T : ISavable
         {

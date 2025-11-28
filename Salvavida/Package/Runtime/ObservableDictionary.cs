@@ -78,7 +78,7 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var list = serializer.ReadDict<TKey, TValue?>(ctx, SvId);
+            var list = serializer.ReadObject<Dictionary<TKey, TValue?>>(ctx);
             SwapSource(list);
         }
 
@@ -236,6 +236,26 @@ namespace Salvavida
         private readonly ISvIdConverter<TKey> _idConverter;
         private string[]? _keysOnDeserialized;
 
+        public override bool IsDirty
+        {
+            get
+            {
+                if (IsSelfDirty)
+                    return true;
+                if (_dict == null)
+                    return false;
+                foreach (var (_, val) in _dict)
+                {
+                    if (val == null)
+                        continue;
+                    if (val.IsDirty)
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
         public TValue? this[TKey key]
         {
             get => _dict[key];
@@ -310,13 +330,13 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadList<string?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+            var tempIds = serializer.ReadObject<string?[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
             Dictionary<TKey, TValue?>? dict;
-            if (tempIds == null || tempIds.Count == 0)
+            if (tempIds == null || tempIds.Length == 0)
                 dict = null;
             else
             {
-                _keysOnDeserialized = tempIds.ToArray();
+                _keysOnDeserialized = tempIds;
                 dict = new Dictionary<TKey, TValue?>();
                 foreach (var id in _keysOnDeserialized)
                 {

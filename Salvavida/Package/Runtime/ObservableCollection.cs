@@ -163,7 +163,7 @@ namespace Salvavida
     }
 
     public abstract class ObservableCollectionSavable<TCol, TElem> : ObservableCollection<TCol, TElem>
-        where TCol : ObservableCollection<TCol, TElem>
+        where TCol : ObservableCollectionSavable<TCol, TElem>
         where TElem : ISavable
     {
         protected ObservableCollectionSavable(string svid, bool saveSeparately) : base(svid, saveSeparately)

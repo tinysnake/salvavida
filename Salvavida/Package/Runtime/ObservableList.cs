@@ -65,7 +65,7 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var list = serializer.ReadList<T>(ctx, SvId);
+            var list = serializer.ReadObject<List<T?>>(ctx);
             SwapSource(list);
         }
 
@@ -267,6 +267,26 @@ namespace Salvavida
         private string?[]? _idsOnDeserialized;
         //private readonly bool _orderMatters;
 
+        public override bool IsDirty
+        {
+            get
+            {
+                if (IsSelfDirty)
+                    return true;
+                if (_list == null)
+                    return false;
+                foreach (var item in _list)
+                {
+                    if (item == null)
+                        continue;
+                    if (item.IsDirty)
+                        return true;
+                }
+
+                return false;
+            }
+        }
+        
         public T? this[int index]
         {
             get => _list[index];
@@ -335,9 +355,9 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadList<string?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA);
+            var tempIds = serializer.ReadObject<string?[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
             List<T?> list;
-            if (tempIds == null || tempIds.Count == 0)
+            if (tempIds == null || tempIds.Length == 0)
                 list = null;
             else
             {
