@@ -60,6 +60,7 @@ namespace Salvavida
 
         protected virtual SerializeContext GetContext()
         {
+            UnityEngine.Debug.Log("GetContext");
             _serializeContext ??= CreateContext();
             var originValue = Interlocked.CompareExchange(ref _pathBuilderLocker, 1, 0);
             if (originValue > 0)
@@ -77,6 +78,7 @@ namespace Salvavida
 
         protected virtual void ReturnContext(SerializeContext ctx)
         {
+            UnityEngine.Debug.Log("ReturnContext");
             var path = ctx.Path;
             path.Clear();
             ctx.ReturnToPool();
@@ -375,13 +377,13 @@ namespace Salvavida
         public virtual T? ReadObject<T>(SerializeContext ctx)
         {
             var result = DoReadImpl<T>(ctx);
-            if (result is ISavable sv)
-            {
-                sv.SvId = ctx.Path.GetSegmentString(^1);
-                //if (result is ISaveWithOrder swo)
-                //    swo.SvOrder = order;
-                sv.SetDirty(false, false);
-            }
+            // if (result is ISavable sv)
+            // {
+            //     sv.SvId = ctx.Path.GetSegmentString(^1);
+            //     //if (result is ISaveWithOrder swo)
+            //     //    swo.SvOrder = order;
+            //     sv.SetDirty(false, false);
+            // }
             AfterDeserialize(result, ctx);
             return result;
         }

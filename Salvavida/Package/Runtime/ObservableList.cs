@@ -392,7 +392,12 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadObject<string[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+            string[]? tempIds = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
+            {
+                if(serializer.Has(ctx))
+                    tempIds = serializer.ReadObject<string[]?>(ctx);
+            }
             List<T?>? list;
             if (tempIds == null || tempIds.Length == 0)
                 list = null;
