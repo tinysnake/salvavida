@@ -348,6 +348,7 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
+            using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);
 
             var tempIds = SvHelper.idListPool.Get();
             try
@@ -363,11 +364,11 @@ namespace Salvavida
                         serializer.SaveObject(elem, ctx, elem.SvId, PathBuilder.Type.Collection);
                         tempIds.Add(elem.SvId);
                     }
-                    serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                    serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 else
                 {
-                    serializer.DeleteObject(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                    serializer.DeleteObject(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 if (_idsOnDeserialized != null)
                 {

@@ -100,7 +100,7 @@ namespace Salvavida
                 throw new ArgumentNullException("path is empty");
         }
 
-        protected FreshActionLocker BeginFreshAction(out SerializeContext ctx)
+        public FreshActionLocker BeginFreshAction(out SerializeContext ctx)
         {
             var locker = new FreshActionLocker(this);
             ctx = locker.Context;
