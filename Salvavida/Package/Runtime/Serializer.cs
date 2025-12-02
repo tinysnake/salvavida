@@ -60,7 +60,6 @@ namespace Salvavida
 
         protected virtual SerializeContext GetContext()
         {
-            UnityEngine.Debug.Log("GetContext");
             _serializeContext ??= CreateContext();
             var originValue = Interlocked.CompareExchange(ref _pathBuilderLocker, 1, 0);
             if (originValue > 0)
@@ -78,7 +77,6 @@ namespace Salvavida
 
         protected virtual void ReturnContext(SerializeContext ctx)
         {
-            UnityEngine.Debug.Log("ReturnContext");
             var path = ctx.Path;
             path.Clear();
             ctx.ReturnToPool();
