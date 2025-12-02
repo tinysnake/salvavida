@@ -42,10 +42,7 @@ namespace Salvavida
                 _idGen ??= DefaultIdGenerator.Default;
                 return _idGen;
             }
-            set
-            {
-                _idGen = value;
-            }
+            set { _idGen = value; }
         }
 
         public virtual T CreateData<T>() where T : new()
@@ -89,7 +86,6 @@ namespace Salvavida
 
         protected virtual void OnReturnContext(SerializeContext ctx)
         {
-
         }
 
         private void ThrowIfPathIsEmpty(PathBuilder pb)
@@ -156,44 +152,13 @@ namespace Salvavida
             return Has(ctx);
         }
 
-        public bool Has(SerializeContext ctx, ReadOnlySpan<char> propName)
+        public bool Has(SerializeContext ctx, ReadOnlySpan<char> propName, PathBuilder.Type pathType)
         {
-            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            using var __s = ctx.Path.UsePush(propName, pathType);
             return Has(ctx);
         }
 
         public abstract bool Has(SerializeContext ctx);
-
-        public bool HasCollection(SerializeContext ctx, ReadOnlySpan<char> propName)
-        {
-            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            return HasCollection(ctx);
-        }
-
-        public abstract bool HasCollection(SerializeContext ctx);
-
-        public void FreshUpdateId<T>(T data, ReadOnlySpan<char> oldId) where T : ISavable
-        {
-            if (data == null || string.IsNullOrEmpty(data.SvId))
-                throw new ArgumentNullException(nameof(data));
-            using var locker = BeginFreshAction(out var ctx);
-            data.GetParentPathAsSpan(ctx.Path);
-            try
-            {
-                DoUpdateId(data, ctx, oldId);
-            }
-            catch (Exception ex)
-            {
-                OnUpdateIdFailed(ctx, ex);
-            }
-        }
-
-        protected abstract void DoUpdateId<T>(T data, SerializeContext ctx, ReadOnlySpan<char> oldId) where T : ISavable;
-
-        protected virtual void OnUpdateIdFailed(SerializeContext ctx, Exception ex)
-        {
-            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnUpdateIdFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
-        }
 
         public void FreshSave<T>(T data) where T : ISavable
         {
@@ -297,8 +262,10 @@ namespace Salvavida
                 {
                     OnDeleteFailed(ctx, ex);
                 }
+
                 return true;
             }
+
             return false;
         }
 
@@ -332,30 +299,6 @@ namespace Salvavida
             throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnSaveObjectFailed)}, at path:  {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
-        //public virtual void SaveList<T>(List<T?> list, SerializeContext ctx, ReadOnlySpan<char> propertyName)
-        //{
-        //    using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
-        //    SaveList(list, ctx);
-        //}
-
-        //public virtual void SaveArray<T>(T?[]? arr, SerializeContext ctx, ReadOnlySpan<char> propertyName)
-        //{
-        //    using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
-        //    SaveArray(arr, ctx);
-        //}
-
-        //public virtual void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?> dict, SerializeContext ctx, ReadOnlySpan<char> propertyName)
-        //{
-        //    using var __s = ctx.Path.UsePush(propertyName, PathBuilder.Type.Property);
-        //    SaveDict(dict, ctx);
-        //}
-
-        //public abstract void SaveList<T>(List<T?>? list, SerializeContext ctx);
-
-        //public abstract void SaveArray<T>(T?[]? arr, SerializeContext ctx);
-
-        //public abstract void SaveDict<TKey, TValue>(Dictionary<TKey, TValue?>? dict, SerializeContext ctx);
-
         public T? FreshRead<T>(ReadOnlySpan<char> svid) where T : ISavable
         {
             if (svid.IsEmpty)
@@ -375,13 +318,6 @@ namespace Salvavida
         public virtual T? ReadObject<T>(SerializeContext ctx)
         {
             var result = DoReadImpl<T>(ctx);
-            // if (result is ISavable sv)
-            // {
-            //     sv.SvId = ctx.Path.GetSegmentString(^1);
-            //     //if (result is ISaveWithOrder swo)
-            //     //    swo.SvOrder = order;
-            //     sv.SetDirty(false, false);
-            // }
             AfterDeserialize(result, ctx);
             return result;
         }
@@ -397,6 +333,7 @@ namespace Salvavida
                 ob.Deserialize(this, ctx);
                 src = ob.RetrieveSource();
             }
+
             return ob;
         }
 
@@ -409,6 +346,7 @@ namespace Salvavida
                 ob.Deserialize(this, ctx);
                 src = ob.RetrieveSource();
             }
+
             return ob;
         }
 
@@ -423,6 +361,7 @@ namespace Salvavida
                 ob.Deserialize(this, ctx);
                 src = ob.RetrieveSource();
             }
+
             return ob;
         }
 
@@ -435,6 +374,7 @@ namespace Salvavida
                 ob.Deserialize(this, ctx);
                 src = ob.RetrieveSource();
             }
+
             return ob;
         }
 
@@ -447,6 +387,7 @@ namespace Salvavida
                 ob.Deserialize(this, ctx);
                 src = ob.RetrieveSource();
             }
+
             return ob;
         }
 
@@ -460,6 +401,7 @@ namespace Salvavida
                 ob.Deserialize(this, ctx);
                 src = ob.RetrieveSource();
             }
+
             return ob;
         }
 
@@ -561,20 +503,6 @@ namespace Salvavida
             throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
 
-        //protected virtual void BeforeSerialize<T>(T obj, SerializeContext ctx)
-        //{
-        //    if (obj is not ISavable sv)
-        //        return;
-        //    sv.BeforeSerialize(this, ctx);
-        //}
-        //protected virtual void AfterSerialize<T>(T obj, SerializeContext ctx)
-        //{
-        //    if (obj is not ISavable sv)
-        //        return;
-        //    sv.AfterSerialize(this, ctx);
-        //    sv.SetDirty(false, false);
-        //}
-
         protected virtual void AfterDeserialize<T>(T obj, SerializeContext ctx)
         {
             if (obj is not ISavable sv)
@@ -585,23 +513,15 @@ namespace Salvavida
             sv.SetDirty(false, false);
         }
 
-        //protected virtual void BeforeSerialize<T>(T obj, Type t, SerializeContext ctx)
-        //{
-        //    if (obj is not ISavable sv)
-        //        return;
-        //    sv.BeforeSerialize(this, ctx);
-        //}
         protected virtual void AfterSerialize<T>(T obj, Type t, SerializeContext ctx)
         {
             if (obj is not ISavable sv)
                 return;
-            //sv.AfterSerialize(this, ctx);
             sv.SetDirty(false, false);
         }
 
         public virtual void Dispose()
         {
-
         }
     }
 }
