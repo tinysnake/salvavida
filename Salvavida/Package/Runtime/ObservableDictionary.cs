@@ -25,12 +25,14 @@ namespace Salvavida
                 if (_dict == null)
                     throw new NullReferenceException(nameof(_dict));
                 var add = !_dict.TryGetValue(key, out var oldValue);
+                if (EqualityComparer<TValue?>.Default.Equals(oldValue, value))
+                    return;
                 _dict[key] = value;
                 OnItemSet(value, key);
                 if (add)
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Add(this, value, -1));
                 else
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Replace(oldValue, value, -1));
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Replace(this, oldValue, value, -1));
                 TryUnWatch(oldValue);
             }
         }
@@ -79,7 +81,7 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
             var list = serializer.ReadObject<Dictionary<TKey, TValue?>>(ctx);
-            SwapSource(list);
+            SwapSource(list, false);
         }
 
         public void SwapSource(Dictionary<TKey, TValue?>? dict)
@@ -93,7 +95,7 @@ namespace Salvavida
             if (_dict != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Reset(this));
                 foreach (var (_, item) in _dict)
                 {
                     TryUnWatch(item);
@@ -102,9 +104,12 @@ namespace Salvavida
             _dict = dict;
             if (_dict != null)
             {
-                foreach (var (key, item) in _dict)
+                foreach (var (_, item) in _dict)
                 {
-                    OnItemSet(item, key);
+                    if (notifyChanges)
+                        TryWatch(item);
+                    else
+                        OnChildDeserialized(item);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -113,34 +118,24 @@ namespace Salvavida
 
         protected override void OnChildChanged(TValue obj, string _)
         {
+            _isDirty = true;
             if (obj is not ISavable)
                 throw new InvalidOperationException();
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Replace(obj, obj, -1));
+            OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Replace(this, obj, obj, -1));
         }
 
-        protected override CollectionChangeInfo<TValue?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?> CreateSaveAllEvent()
         {
+            if (_dict == null)
+                throw new NullReferenceException(nameof(_dict));
             var arr = new TValue?[_dict.Count];
             var i = 0;
             foreach (var (_, val) in _dict)
             {
                 arr[i++] = val;
             }
-            return CollectionChangeInfo<TValue?>.Add(arr, -1);
+            return CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Add(this, arr, -1);
         }
-
-        //protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
-        //{
-        //    if (!SaveSeparately)
-        //        throw new NotSupportedException();
-
-        //    if (string.IsNullOrEmpty(SvId))
-        //        throw new NullReferenceException(nameof(SvId));
-        //    if (ctx == null)
-        //        serializer.FreshAction(this, path => serializer.SaveDict(_dict, path), null);
-        //    else
-        //        serializer.SaveDict(_dict, ctx);
-        //}
 
         private void OnItemSet(TValue? item, TKey key)
         {
@@ -157,7 +152,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_dict));
             _dict.Add(key, value);
             OnItemSet(value, key);
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
+            OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Add(this, value, -1));
         }
 
         public void Add(KeyValuePair<TKey, TValue?> item) => Add(item.Key, item.Value);
@@ -168,7 +163,7 @@ namespace Salvavida
         {
             if (_dict == null)
                 throw new NullReferenceException(nameof(_dict));
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
+            OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Reset(this));
             foreach (var value in _dict.Values)
             {
                 TryUnWatch(value);
@@ -202,7 +197,7 @@ namespace Salvavida
             {
                 if (_dict.Remove(key))
                 {
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Remove(item, -1));
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Remove(this, item, -1));
                     TryUnWatch(item);
                     return true;
                 }
@@ -216,7 +211,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_dict));
             if (((ICollection<KeyValuePair<TKey, TValue?>>)_dict).Remove(item))
             {
-                OnCollectionChange(CollectionChangeInfo<TValue?>.Remove(item.Value, -1));
+                OnCollectionChange(CollectionChangeInfo<ObservableDictionary<TKey, TValue>, TValue?>.Remove(this, item.Value, -1));
                 TryUnWatch(item.Value);
                 return true;
             }
@@ -272,12 +267,14 @@ namespace Salvavida
                 if (_dict == null)
                     throw new NullReferenceException(nameof(_dict));
                 var add = !_dict.TryGetValue(key, out var oldValue);
+                if (EqualityComparer<TValue?>.Default.Equals(oldValue, value))
+                    return;
                 _dict[key] = value;
                 OnItemSet(value, key);
                 if (add)
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Add(this, value, -1));
                 else
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Replace(oldValue, value, -1));
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Replace(this, oldValue, value, -1));
                 TryUnWatch(oldValue);
             }
         }
@@ -314,6 +311,19 @@ namespace Salvavida
 
         public Type CollectionType => typeof(Dictionary<TKey, TValue?>);
 
+        public override void SetDirty(bool dirty, bool recursive)
+        {
+            base.SetDirty(dirty, recursive);
+            if (recursive && _dict != null)
+            {
+                _isChildrenDirty = dirty;
+                foreach (var (_, val) in _dict)
+                {
+                    val?.SetDirty(dirty, recursive);
+                }
+            }
+        }
+
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
@@ -329,7 +339,9 @@ namespace Salvavida
                     foreach (var (key, value) in _dict)
                     {
                         var id = _idConverter.ConvertTo(key);
-                        serializer.SaveObject(value, ctx, id, PathBuilder.Type.Collection);
+#pragma warning disable CS8631 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match constraint type.
+                        value?.TrySerialize(serializer, ctx, PathBuilder.Type.Collection);
+#pragma warning restore CS8631 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match constraint type.
                         tempIds.Add(id);
                     }
                     serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
@@ -374,7 +386,7 @@ namespace Salvavida
                     dict[_idConverter.ConvertFrom(id)] = serializer.ReadObject<TValue?>(ctx, id, PathBuilder.Type.Collection);
                 }
             }
-            SwapSource(dict);
+            SwapSource(dict, false);
         }
 
         public void SwapSource(Dictionary<TKey, TValue?>? dict)
@@ -388,7 +400,7 @@ namespace Salvavida
             if (_dict != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Reset(this));
                 foreach (var (_, item) in _dict)
                 {
                     TryUnWatch(item);
@@ -397,9 +409,12 @@ namespace Salvavida
             _dict = dict;
             if (_dict != null)
             {
-                foreach (var (key, item) in _dict)
+                foreach (var (_, item) in _dict)
                 {
-                    OnItemSet(item, key);
+                    if (notifyChanges)
+                        TryWatch(item);
+                    else
+                        OnChildDeserialized(item);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -408,12 +423,13 @@ namespace Salvavida
 
         protected override void OnChildChanged(TValue obj, string _)
         {
+            _isChildrenDirty = true;
             if (obj is not ISavable)
                 throw new InvalidOperationException();
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Replace(obj, obj, -1));
+            OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Replace(this, obj, obj, -1));
         }
 
-        protected override CollectionChangeInfo<TValue?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?> CreateSaveAllEvent()
         {
             if (_dict == null)
                 throw new NullReferenceException(nameof(_dict));
@@ -423,7 +439,7 @@ namespace Salvavida
             {
                 arr[i++] = val;
             }
-            return CollectionChangeInfo<TValue?>.Add(arr, -1);
+            return CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Add(this, arr, -1);
         }
 
         private void OnItemSet(TValue? item, TKey key)
@@ -439,7 +455,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_dict));
             _dict.Add(key, value);
             OnItemSet(value, key);
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Add(value, -1));
+            OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Add(this, value, -1));
         }
 
         public void Add(KeyValuePair<TKey, TValue?> item) => Add(item.Key, item.Value);
@@ -450,7 +466,7 @@ namespace Salvavida
         {
             if (_dict == null)
                 throw new NullReferenceException(nameof(_dict));
-            OnCollectionChange(CollectionChangeInfo<TValue?>.Reset());
+            OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Reset(this));
             foreach (var value in _dict.Values)
             {
                 TryUnWatch(value);
@@ -484,7 +500,7 @@ namespace Salvavida
             {
                 if (_dict.Remove(key))
                 {
-                    OnCollectionChange(CollectionChangeInfo<TValue?>.Remove(item, -1));
+                    OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Remove(this, item, -1));
                     TryUnWatch(item);
                     return true;
                 }
@@ -498,7 +514,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_dict));
             if (((ICollection<KeyValuePair<TKey, TValue?>>)_dict).Remove(item))
             {
-                OnCollectionChange(CollectionChangeInfo<TValue?>.Remove(item.Value, -1));
+                OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavable<TKey, TValue>, TValue?>.Remove(this, item.Value, -1));
                 TryUnWatch(item.Value);
                 return true;
             }
@@ -508,73 +524,5 @@ namespace Salvavida
         void IDictionary.Remove(object key) => Remove((TKey)key);
 
         public bool TryGetValue(TKey key, out TValue? value) => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.TryGetValue(key, out value);
-
-
-        //protected override void TrySaveItems(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<TValue?> e)
-        //{
-        //    switch (e.Action)
-        //    {
-        //        case CollectionChangedAction.Add:
-        //        case CollectionChangedAction.Replace:
-        //            if (e.IsSingleItem)
-        //                KeyCollectionSave(serializer, ctx, e.NewItem!, isRemove: false);
-        //            else
-        //                KeyCollectionSave(serializer, ctx, e.NewItems!, isRemove: false);
-        //            break;
-        //        case CollectionChangedAction.Remove:
-        //            if (e.IsSingleItem)
-        //                KeyCollectionSave(serializer, ctx, e.OldItem!, isRemove: true);
-        //            else
-        //                KeyCollectionSave(serializer, ctx, e.OldItems!, isRemove: true);
-        //            break;
-        //        case CollectionChangedAction.Reset:
-        //            ClearCollection(serializer, ctx);
-        //            break;
-        //        default:
-        //            throw new NotSupportedException();
-        //    }
-        //}
-
-        //private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, TValue value, bool isRemove)
-        //{
-        //    if (isRemove)
-        //    {
-        //        if (ctx == null)
-        //            serializer.FreshDelete(value);
-        //        else
-        //            serializer.Delete(value, ctx, PathBuilder.Type.Collection);
-        //    }
-        //    else
-        //    {
-        //        if (ctx == null)
-        //            serializer.FreshSave(value);
-        //        else
-        //            serializer.Save(value, ctx, PathBuilder.Type.Collection);
-        //    }
-        //}
-
-        //private void KeyCollectionSave(Serializer serializer, SerializeContext? ctx, IList<TValue?> values, bool isRemove)
-        //{
-        //    if (values == null)
-        //        throw new ArgumentNullException(nameof(values));
-        //    if (ctx == null)
-        //        serializer.FreshAction(this, x => KeyCollectionSaveAction(serializer, x, values, isRemove), null);
-        //    else
-        //        KeyCollectionSaveAction(serializer, ctx, values, isRemove);
-        //}
-
-        //private void KeyCollectionSaveAction(Serializer serializer, SerializeContext ctx, IList<TValue?> values, bool isRemove)
-        //{
-        //    for (var i = 0; i < values.Count; i++)
-        //    {
-        //        var val = values[i];
-        //        if (val == null)
-        //            continue;
-        //        if (isRemove)
-        //            serializer.Delete(val, ctx, PathBuilder.Type.Collection);
-        //        else
-        //            serializer.Save(val, ctx, PathBuilder.Type.Collection);
-        //    }
-        //}
     }
 }

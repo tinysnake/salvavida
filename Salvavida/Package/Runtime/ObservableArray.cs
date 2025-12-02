@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Salvavida
 {
-    public class ObservableArray<T> : ObservableCollection<ObservableArray<T>, T>, IList<T?>, IReadOnlyList<T?>, IList, IEnumerable<T?>, IEnumerable, ICollectionWrapper<T?[]>
+    public sealed class ObservableArray<T> : ObservableCollection<ObservableArray<T>, T>, IList<T?>, IReadOnlyList<T?>, IList, IEnumerable<T?>, IEnumerable, ICollectionWrapper<T?[]>
     {
         public ObservableArray()
         {
@@ -30,9 +30,11 @@ namespace Salvavida
                 if (_arr == null)
                     throw new NullReferenceException(nameof(_arr));
                 var oldVal = _arr[index];
+                if (EqualityComparer<T?>.Default.Equals(oldVal, value))
+                    return;
                 _arr[index] = value;
-                OnItemSet(value, index);
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldVal, value, index));
+                TryWatch(value);
+                OnCollectionChange(CollectionChangeInfo<ObservableArray<T>, T?>.Replace(this, oldVal, value, index));
                 TryUnWatch(oldVal);
             }
         }
@@ -67,7 +69,7 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
             var arr = serializer.ReadObject<T?[]>(ctx);
-            SwapSource(arr);
+            SwapSource(arr, false);
         }
 
         public void SwapSource(T?[]? array)
@@ -81,7 +83,7 @@ namespace Salvavida
             if (_arr != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
+                    OnCollectionChange(CollectionChangeInfo<ObservableArray<T>, T?>.Reset(this));
                 for (var i = 0; i < _arr.Length; i++)
                 {
                     TryUnWatch(_arr[i]);
@@ -92,47 +94,30 @@ namespace Salvavida
             {
                 for (var i = 0; i < _arr.Length; i++)
                 {
-                    OnItemSet(_arr[i], i);
+                    if (notifyChanges)
+                        TryWatch(_arr[i]);
+                    else
+                        OnChildDeserialized(_arr[i]);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
             }
         }
 
-        private void OnItemSet(T? item, int index)
-        {
-            //if (item is ISaveWithOrder swo)
-            //    swo.SvOrder = index;
-            if (item is ISavable sv)
-                sv.SvId ??= DefaultIdGenerator.Default.GetId();
-            TryWatch(item);
-        }
-
         protected override void OnChildChanged(T child, string _)
         {
+            _isDirty = true;
             var index = IndexOf(child);
             if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(child, child, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableArray<T>, T?>.Replace(this, child, child, index));
         }
 
-        protected override CollectionChangeInfo<T?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableArray<T>, T?> CreateSaveAllEvent()
         {
             if (_arr == null)
                 throw new NullReferenceException(nameof(_arr));
-            return CollectionChangeInfo<T?>.Add(_arr, 0);
+            return CollectionChangeInfo<ObservableArray<T>, T?>.Add(this, _arr, 0);
         }
-
-        //protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
-        //{
-        //    if (!SaveSeparately)
-        //        throw new NotSupportedException();
-        //    if (string.IsNullOrEmpty(SvId))
-        //        throw new NullReferenceException(nameof(SvId));
-        //    if (ctx == null)
-        //        serializer.FreshAction(this, path => serializer.SaveArray(_arr, path), null);
-        //    else
-        //        serializer.SaveArray(_arr, ctx);
-        //}
 
         public bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;
         bool IList.Contains(object value) => Contains((T?)value);
@@ -253,9 +238,11 @@ namespace Salvavida
                 if (_arr == null)
                     throw new NullReferenceException(nameof(_arr));
                 var oldVal = _arr[index];
+                if (EqualityComparer<T?>.Default.Equals(oldVal, value))
+                    return;
                 _arr[index] = value;
-                OnItemSet(value, index);
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldVal, value, index));
+                TryWatch(value);
+                OnCollectionChange(CollectionChangeInfo<ObservableArraySavable<T>, T?>.Replace(this, oldVal, value, index));
                 TryUnWatch(oldVal);
             }
         }
@@ -278,6 +265,19 @@ namespace Salvavida
 
         public Type CollectionType => typeof(T[]);
 
+        public override void SetDirty(bool dirty, bool recursive)
+        {
+            base.SetDirty(dirty, recursive);
+            if (recursive && _arr != null)
+            {
+                _isChildrenDirty = dirty;
+                foreach (var item in _arr)
+                {
+                    item?.SetDirty(dirty, recursive);
+                }
+            }
+        }
+
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
@@ -297,7 +297,7 @@ namespace Salvavida
                             continue;
                         if (elem.SvId == null)
                             throw new ArgumentNullException("elem.SvId");
-                        serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        elem.TrySerialize(serializer, ctx, PathBuilder.Type.Collection);
                         tempIds.Add(elem.SvId);
                     }
                     serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
@@ -343,7 +343,7 @@ namespace Salvavida
                     arr[i] = serializer.ReadObject<T?>(ctx, _idsOnDeserialized[i], PathBuilder.Type.Collection);
                 }
             }
-            SwapSource(arr);
+            SwapSource(arr, false);
         }
 
 
@@ -358,7 +358,7 @@ namespace Salvavida
             if (_arr != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
+                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavable<T>, T?>.Reset(this));
                 for (var i = 0; i < _arr.Length; i++)
                 {
                     TryUnWatch(_arr[i]);
@@ -369,32 +369,29 @@ namespace Salvavida
             {
                 for (var i = 0; i < _arr.Length; i++)
                 {
-                    OnItemSet(_arr[i], i);
+                    if (notifyChanges)
+                        TryWatch(_arr[i]);
+                    else
+                        OnChildDeserialized(_arr[i]);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
             }
         }
 
-        private void OnItemSet(T? item, int index)
-        {
-            if (item is ISavable sv)
-                sv.SvId ??= DefaultIdGenerator.Default.GetId();
-            TryWatch(item);
-        }
-
         protected override void OnChildChanged(T child, string _)
         {
+            _isChildrenDirty = true;
             var index = IndexOf(child);
             if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(child, child, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableArraySavable<T>, T?>.Replace(this, child, child, index));
         }
 
-        protected override CollectionChangeInfo<T?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableArraySavable<T>, T?> CreateSaveAllEvent()
         {
             if (_arr == null)
                 throw new NullReferenceException(nameof(_arr));
-            return CollectionChangeInfo<T?>.Add(_arr, 0);
+            return CollectionChangeInfo<ObservableArraySavable<T>, T?>.Add(this, _arr, 0);
         }
 
         public bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;

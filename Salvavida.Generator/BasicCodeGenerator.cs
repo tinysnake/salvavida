@@ -265,8 +265,9 @@ namespace Salvavida.Generator
 
                 _infoStore!.savableMembers.Add(propertyName);
                 var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols);
+                var elemTypeString = elemTypeSymbols.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                 WriteCollectionProperty(sb, ctx, propertyName, fieldName,
-                    typeSymbol, collectionTypeString, saveSeparately);
+                    typeSymbol, collectionTypeString, elemTypeString, saveSeparately);
             }
         }
 
@@ -315,7 +316,7 @@ namespace Salvavida.Generator
         }
 
         protected virtual void WriteCollectionProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName,
-            ITypeSymbol typeSymbol, string collectionTypeString, bool saveSeparately)
+            ITypeSymbol typeSymbol, string collectionTypeString, string elemTypeString, bool saveSeparately)
         {
             AddAttributePreventSerialize(sb, false);
             sb.WriteLine($"private {collectionTypeString} {fieldName}Ob;");
@@ -348,7 +349,7 @@ namespace Salvavida.Generator
                 sb.WriteLine($"if ({fieldName}Ob != null)");
                 sb.WriteLine("    return;");
                 sb.WriteLine($"{fieldName}Ob = new {collectionTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
-                sb.WriteLine($"WatchChild({fieldName}Ob, \"{propertyName}\");");
+                sb.WriteLine($"WatchCollection<{collectionTypeString}, {elemTypeString}>({fieldName}Ob);");
             }
 
             sb.WriteLine();
@@ -393,9 +394,11 @@ namespace Salvavida.Generator
             AddAttributePreventSerialize(sb, false);
             sb.WriteLine("private string _svId;");
             sb.WriteLine("private bool _svIsDirty = true;");
+            sb.WriteLine("private bool _svIsChildrenDirty = false;");
             sb.WriteLine();
             AddAttributePreventSerialize(sb, true);
             sb.WriteLine("public bool IsSelfDirty => _svIsDirty;");
+            sb.WriteLine("public bool IsDirty => _svIsDirty || _svIsChildrenDirty;");
             AddAttributePreventSerialize(sb, true);
             sb.WriteLine("public string SvId");
             using (sb.CurlyBracketsScope())
@@ -425,33 +428,12 @@ namespace Salvavida.Generator
 
         protected virtual void WriteImplementationsFoot(ScriptBuilder sb, CodeGenerationContext ctx)
         {
-            sb.WriteLine("public bool IsDirty");
-            using (sb.CurlyBracketsScope())
-            {
-                var names = new List<string>();
-                sb.Write("get => _svIsDirty");
-                if (_infoStore!.separatedProperties.Count > 0 || _infoStore!.separatedCollections.Count > 0)
-                {
-                    sb.Write(" || ", true);
-                }
-                foreach (var propName in _infoStore!.separatedProperties)
-                {
-                    names.Add($"({propName}?.IsDirty ?? false)");
-                }
-                foreach (var propName in _infoStore.separatedCollections)
-                {
-                    names.Add($"({propName}?.IsDirty ?? false)");
-                }
-                sb.Write(string.Join(" || ", names), true);
-                sb.WriteLine(";", true);
-            }
-
             sb.WriteLine("void ISavable.SetParent(ISavable parent)");
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("if (Equals(SvParent, parent)) return;");
                 sb.WriteLine("SvParent = parent;");
-                //sb.WriteLine("(this as ISavable).SetDirty(true, true);");
+                sb.WriteLine("(this as ISavable).SetDirty(true, true);");
             }
 
             sb.WriteLine();
@@ -460,6 +442,7 @@ namespace Salvavida.Generator
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("_svIsDirty = dirty;");
+                sb.WriteLine("_svIsChildrenDirty = dirty;");
                 if (_infoStore!.savableMembers.Count > 0)
                 {
                     sb.WriteLine("if (recursively)");
@@ -545,7 +528,7 @@ namespace Salvavida.Generator
                         sb.WriteLine("default: break;");
                     }
                 }
-                //sb.WriteLine("_svIsDirty = true;");
+                sb.WriteLine("_svIsChildrenDirty = true;");
                 //sb.WriteLine("this.TrySave(sv.SvId, sv, typeof(T), _separatedProperties, _separatedCollections);");
                 sb.WriteLine("PropertyChanged?.Invoke(this, sv.SvId);");
             }
@@ -575,10 +558,63 @@ namespace Salvavida.Generator
 
             sb.WriteLine();
 
+            sb.WriteLine("private void OnChildDeserialized<T>(T target, string propertyName)");
+            using (sb.CurlyBracketsScope())
+            {
+                sb.WriteLine("if (target is not ISavable<T> sv)");
+                sb.WriteLine("    return;");
+                sb.WriteLine("sv.SvId = propertyName;");
+                sb.WriteLine("this.ChildDeserialized(sv);");
+                sb.WriteLine("sv.PropertyChanged += OnChildChanged;");
+            }
+
+
+            sb.WriteLine("private void OnCollectionDeserialized<TCol, TElem>(ObservableCollection<TCol, TElem> target)");
+            sb.WriteLine("    where TCol : ObservableCollection<TCol, TElem>");
+            using (sb.CurlyBracketsScope())
+            {
+                sb.WriteLine("this.ChildDeserialized(target);");
+                sb.WriteLine("target.PropertyChanged += OnChildChanged;");
+                sb.WriteLine("target.CollectionChanged += OnCollectionChanged;");
+            }
+
+            sb.WriteLine();
+
+            sb.WriteLine("private void WatchCollection<TCol, TElem>(TCol target) where TCol: ObservableCollection<TCol, TElem>");
+            using (sb.CurlyBracketsScope())
+            {
+                sb.WriteLine("if (target == null) return;");
+                sb.WriteLine("target.PropertyChanged += OnChildChanged;");
+                sb.WriteLine("target.CollectionChanged += OnCollectionChanged;");
+            }
+
+            sb.WriteLine();
+
+            sb.WriteLine("private void UnwatchCollection<TCol, TElem>(TCol target) where TCol: ObservableCollection<TCol, TElem>");
+            using (sb.CurlyBracketsScope())
+            {
+                sb.WriteLine("if (target == null) return;");
+                sb.WriteLine("target.PropertyChanged -= OnChildChanged;");
+                sb.WriteLine("target.CollectionChanged -= OnCollectionChanged;");
+            }
+
+            sb.WriteLine();
+
+            sb.WriteLine("private void OnCollectionChanged<TCol, TElem>(CollectionChangeInfo<TCol, TElem> evt)");
+            using (sb.CurlyBracketsScope())
+            {
+                sb.WriteLine("if (evt.SourceCollection is not ISavable sv)");
+                sb.WriteLine("    return;");
+                sb.WriteLine("_svIsChildrenDirty = true;");
+                sb.WriteLine("PropertyChanged?.Invoke(this, sv.SvId);");
+            }
+
+            sb.WriteLine();
+
             sb.WriteLine("public void Serialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())
             {
-                sb.WriteLine("using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);");
+                //sb.WriteLine("using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);");
                 sb.WriteLine("var isSelfDirty = IsSelfDirty;");
                 sb.WriteLine("if (isSelfDirty)");
                 using (sb.CurlyBracketsScope())
@@ -650,7 +686,7 @@ namespace Salvavida.Generator
                 {
                     var fieldName = GetOriginName(prop);
                     sb.WriteLine($"{fieldName} = serializer.ReadObject<{_infoStore!.propTypeMappings[fieldName].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}>(ctx, \"{prop}\", PathBuilder.Type.Property);");
-                    sb.WriteLine($"WatchChild({fieldName}, \"{prop}\");");
+                    sb.WriteLine($"OnChildDeserialized({fieldName}, \"{prop}\");");
                 }
 
                 WriteLoadCollections(sb, _infoStore!.separatedCollections, true);
@@ -679,7 +715,7 @@ namespace Salvavida.Generator
                 var savableStr = isSavable ? "Savable" : "";
                 var typeParametersStr = string.Join(", ", typeParameters.Select(symbol => symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
                 sb.WriteLine($"{fieldName}Ob = serializer.LoadCollection{savableStr}(ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName});");
-                sb.WriteLine($"WatchChild({fieldName}Ob, \"{name}\");");
+                sb.WriteLine($"OnCollectionDeserialized({fieldName}Ob);");
             }
         }
 

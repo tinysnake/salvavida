@@ -26,9 +26,11 @@ namespace Salvavida
                 if (_list == null)
                     throw new NullReferenceException(nameof(_list));
                 var oldValue = _list[index];
+                if (EqualityComparer<T?>.Default.Equals(oldValue, value))
+                    return;
                 _list[index] = value;
                 OnItemSet(value, index);
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldValue, value, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Replace(this, oldValue, value, index));
                 TryUnWatch(oldValue);
             }
         }
@@ -67,7 +69,7 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
             var list = serializer.ReadObject<List<T?>>(ctx);
-            SwapSource(list);
+            SwapSource(list, false);
         }
 
         public void SwapSource(List<T?>? list)
@@ -81,7 +83,7 @@ namespace Salvavida
             if (_list != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
+                    OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Reset(this));
                 for (var i = 0; i < _list.Count; i++)
                 {
                     TryUnWatch(_list[i]);
@@ -92,7 +94,10 @@ namespace Salvavida
             {
                 for (var i = 0; i < _list.Count; i++)
                 {
-                    OnItemSet(_list[i], i);
+                    if (notifyChanges)
+                        TryWatch(_list[i]);
+                    else
+                        OnChildDeserialized(_list[i]);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -101,29 +106,18 @@ namespace Salvavida
 
         protected override void OnChildChanged(T obj, string _)
         {
+            _isDirty = true;
             var index = IndexOf(obj);
             if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(obj, obj, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Replace(this, obj, obj, index));
         }
 
-        protected override CollectionChangeInfo<T?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableList<T>, T?> CreateSaveAllEvent()
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
-            return CollectionChangeInfo<T?>.Add(_list, 0);
+            return CollectionChangeInfo<ObservableList<T>, T?>.Add(this, _list, 0);
         }
-
-        //protected override void TrySaveSeparatelyByEvent(Serializer serializer, SerializeContext? ctx, CollectionChangeInfo<T?> e)
-        //{
-        //    if (!SaveSeparately)
-        //        throw new NotSupportedException();
-        //    if (string.IsNullOrEmpty(SvId))
-        //        throw new NullReferenceException(nameof(SvId));
-        //    if (ctx == null)
-        //        serializer.FreshAction(this, path => serializer.SaveList(_list, path), null);
-        //    else
-        //        serializer.SaveList(_list, ctx);
-        //}
 
         public void Add(T? item)
         {
@@ -132,7 +126,7 @@ namespace Salvavida
             var index = _list.Count;
             _list.Add(item);
             OnItemSet(item, index);
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Add(this, item, index));
         }
 
         int IList.Add(object value)
@@ -152,7 +146,7 @@ namespace Salvavida
                 var item = collection[i];
                 OnItemSet(item, index);
             }
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(collection, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Add(this, collection, index));
         }
 
         private void OnItemSet(T? item, int index)
@@ -168,7 +162,7 @@ namespace Salvavida
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
-            OnCollectionChange(CollectionChangeInfo<T?>.Reset());
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Reset(this));
             foreach (var item in _list)
             {
                 TryUnWatch(item);
@@ -202,7 +196,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             _list.Insert(index, item);
             OnItemSet(item, index);
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Add(this, item, index));
         }
 
         void IList.Insert(int index, object value) => Insert(index, (T?)value);
@@ -217,7 +211,7 @@ namespace Salvavida
                 var item = collection[i];
                 OnItemSet(item, i + index);
             }
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(collection, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Add(this, collection, index));
         }
 
         public bool Remove(T? item)
@@ -228,7 +222,7 @@ namespace Salvavida
             if (index >= 0)
             {
                 _list.RemoveAt(index);
-                OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Remove(this, item, index));
                 TryUnWatch(item);
                 return true;
             }
@@ -243,7 +237,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var arr = new T?[count];
             _list.CopyTo(index, arr, 0, count);
-            OnCollectionChange(CollectionChangeInfo<T?>.Remove(arr, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Remove(this, arr, index));
             foreach (var item in arr)
             {
                 TryUnWatch(item);
@@ -257,7 +251,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var item = _list[index];
             _list.RemoveAt(index);
-            OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Remove(this, item, index));
             TryUnWatch(item);
         }
 
@@ -315,9 +309,11 @@ namespace Salvavida
                 if (_list == null)
                     throw new NullReferenceException(nameof(_list));
                 var oldValue = _list[index];
+                if (EqualityComparer<T?>.Default.Equals(oldValue, value))
+                    return;
                 _list[index] = value;
                 OnItemSet(value, index);
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(oldValue, value, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Replace(this, oldValue, value, index));
                 TryUnWatch(oldValue);
             }
         }
@@ -344,6 +340,19 @@ namespace Salvavida
 
         public Type CollectionType => typeof(List<T?>);
 
+        public override void SetDirty(bool dirty, bool recursive)
+        {
+            base.SetDirty(dirty, recursive);
+            if (recursive && _list != null)
+            {
+                _isChildrenDirty = dirty;
+                foreach (var item in _list)
+                {
+                    item?.SetDirty(dirty, recursive);
+                }
+            }
+        }
+
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
@@ -361,7 +370,7 @@ namespace Salvavida
                             continue;
                         if (string.IsNullOrEmpty(elem.SvId))
                             throw new ArgumentNullException("elem.SvId");
-                        serializer.SaveObject(elem, ctx, elem.SvId, PathBuilder.Type.Collection);
+                        elem.TrySerialize(serializer, ctx, PathBuilder.Type.Collection);
                         tempIds.Add(elem.SvId);
                     }
                     serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
@@ -396,7 +405,7 @@ namespace Salvavida
             string[]? tempIds = null;
             using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
             {
-                if(serializer.Has(ctx))
+                if (serializer.Has(ctx))
                     tempIds = serializer.ReadObject<string[]?>(ctx);
             }
             List<T?>? list;
@@ -411,7 +420,7 @@ namespace Salvavida
                     list.Add(serializer.ReadObject<T?>(ctx, id, PathBuilder.Type.Collection));
                 }
             }
-            SwapSource(list);
+            SwapSource(list, false);
         }
 
         public void SwapSource(List<T?>? list)
@@ -425,7 +434,7 @@ namespace Salvavida
             if (_list != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<T?>.Reset());
+                    OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Reset(this));
                 for (var i = 0; i < _list.Count; i++)
                 {
                     TryUnWatch(_list[i]);
@@ -436,7 +445,10 @@ namespace Salvavida
             {
                 for (var i = 0; i < _list.Count; i++)
                 {
-                    OnItemSet(_list[i], i);
+                    if (notifyChanges)
+                        TryWatch(_list[i]);
+                    else
+                        OnChildDeserialized(_list[i]);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -445,16 +457,17 @@ namespace Salvavida
 
         protected override void OnChildChanged(T obj, string _)
         {
+            _isChildrenDirty = true;
             var index = IndexOf(obj);
             if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<T?>.Replace(obj, obj, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Replace(this, obj, obj, index));
         }
 
-        protected override CollectionChangeInfo<T?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableListSavable<T>, T?> CreateSaveAllEvent()
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
-            return CollectionChangeInfo<T?>.Add(_list, 0);
+            return CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, _list, 0);
         }
 
         public void Add(T? item)
@@ -464,7 +477,7 @@ namespace Salvavida
             var index = _list.Count;
             _list.Add(item);
             OnItemSet(item, index);
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, item, index));
         }
 
         int IList.Add(object value)
@@ -484,7 +497,7 @@ namespace Salvavida
                 var item = collection[i];
                 OnItemSet(item, index);
             }
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(collection, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, collection, index));
         }
 
         private void OnItemSet(T? item, int index)
@@ -500,7 +513,7 @@ namespace Salvavida
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
-            OnCollectionChange(CollectionChangeInfo<T?>.Reset());
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Reset(this));
             foreach (var item in _list)
             {
                 TryUnWatch(item);
@@ -534,7 +547,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             _list.Insert(index, item);
             OnItemSet(item, index);
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, item, index));
         }
 
         void IList.Insert(int index, object value) => Insert(index, (T?)value);
@@ -549,7 +562,7 @@ namespace Salvavida
                 var item = collection[i];
                 OnItemSet(item, i + index);
             }
-            OnCollectionChange(CollectionChangeInfo<T?>.Add(collection, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, collection, index));
         }
 
         public bool Remove(T? item)
@@ -560,7 +573,7 @@ namespace Salvavida
             if (index >= 0)
             {
                 _list.RemoveAt(index);
-                OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, item, index));
                 TryUnWatch(item);
                 return true;
             }
@@ -575,7 +588,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var arr = new T?[count];
             _list.CopyTo(index, arr, 0, count);
-            OnCollectionChange(CollectionChangeInfo<T?>.Remove(arr, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, arr, index));
             foreach (var item in arr)
             {
                 TryUnWatch(item);
@@ -589,7 +602,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var item = _list[index];
             _list.RemoveAt(index);
-            OnCollectionChange(CollectionChangeInfo<T?>.Remove(item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, item, index));
             TryUnWatch(item);
         }
 

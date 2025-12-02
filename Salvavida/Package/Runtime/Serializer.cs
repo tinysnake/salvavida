@@ -100,7 +100,7 @@ namespace Salvavida
                 throw new ArgumentNullException("path is empty");
         }
 
-        public FreshActionLocker BeginFreshAction(out SerializeContext ctx)
+        protected FreshActionLocker BeginFreshAction(out SerializeContext ctx)
         {
             var locker = new FreshActionLocker(this);
             ctx = locker.Context;
@@ -318,7 +318,7 @@ namespace Salvavida
             {
                 //BeforeSerialize(obj, type, ctx);
                 DoSaveObjectImpl(obj, type, ctx);
-                //AfterSerialize(obj, type, ctx);
+                AfterSerialize(obj, type, ctx);
             }
             catch (Exception ex)
             {
@@ -465,30 +465,6 @@ namespace Salvavida
             return ob;
         }
 
-        // public T?[]? ReadArray<T>(SerializeContext ctx, ReadOnlySpan<char> propName)
-        // {
-        //     using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-        //     return ReadArray<T>(ctx);
-        // }
-        //
-        // public abstract T?[]? ReadArray<T>(SerializeContext ctx);
-        //
-        // public List<T?>? ReadList<T>(SerializeContext ctx, ReadOnlySpan<char> propName)
-        // {
-        //     using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-        //     return ReadList<T>(ctx);
-        // }
-        //
-        // public abstract List<T?>? ReadList<T>(SerializeContext ctx);
-        //
-        // public Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName)
-        // {
-        //     using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-        //     return ReadDict<TKey, TValue>(ctx);
-        // }
-        //
-        // public abstract Dictionary<TKey, TValue?>? ReadDict<TKey, TValue>(SerializeContext ctx);
-
         public void FreshDelete<T>(T data) where T : ISavable
         {
             if (data == null)
@@ -617,13 +593,13 @@ namespace Salvavida
         //        return;
         //    sv.BeforeSerialize(this, ctx);
         //}
-        //protected virtual void AfterSerialize<T>(T obj, Type t, SerializeContext ctx)
-        //{
-        //    if (obj is not ISavable sv)
-        //        return;
-        //    sv.AfterSerialize(this, ctx);
-        //    sv.SetDirty(false, false);
-        //}
+        protected virtual void AfterSerialize<T>(T obj, Type t, SerializeContext ctx)
+        {
+            if (obj is not ISavable sv)
+                return;
+            //sv.AfterSerialize(this, ctx);
+            sv.SetDirty(false, false);
+        }
 
         public virtual void Dispose()
         {
