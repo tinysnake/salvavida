@@ -4,9 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace Salvavida.Generator
 {
@@ -14,7 +12,7 @@ namespace Salvavida.Generator
     {
         public CodeGenerationContext(ClassDeclarationSyntax classNode, Compilation compilation,
             SourceProductionContext spc, SemanticModel semanticModel, INamedTypeSymbol typeSymbol,
-            LanguageVersion langVer, string? debugOutputFile)
+            LanguageVersion langVer, IDebug debugger)
         {
             ClassNode = classNode;
             Compilation = compilation;
@@ -22,8 +20,7 @@ namespace Salvavida.Generator
             SemanticModel = semanticModel;
             TypeSymbol = typeSymbol;
             LanguageVersion = langVer;
-            DebugOutputFile = debugOutputFile;
-
+            Debugger = debugger;
         }
 
         public ClassDeclarationSyntax ClassNode { get; }
@@ -38,7 +35,7 @@ namespace Salvavida.Generator
 
         public LanguageVersion LanguageVersion { get; }
 
-        public string? DebugOutputFile { get; }
+        public IDebug Debugger { get; }
     }
 
     public record GenerationConfig
@@ -57,10 +54,9 @@ namespace Salvavida.Generator
     }
 
     [Generator(LanguageNames.CSharp)]
-#pragma warning disable RS1036 // Specify analyzer banned API enforcement setting
     public class SalvavidaGenerator : IIncrementalGenerator
-#pragma warning restore RS1036 // Specify analyzer banned API enforcement setting
     {
+        internal const string DEBUG_FILE = "d:";
         public const string SALVAVIDA_ATTRIBUTE = "Salvavida.SavableAttribute";
         public const string SALVAVIDA_SAVE_SEPERATELY_ATTRIBUTE = "Salvavida.SaveSeparatelyAttribute";
         public const string MEMORY_PACKABLE_ATTRIBUTE = "MemoryPack.MemoryPackableAttribute";
@@ -68,16 +64,32 @@ namespace Salvavida.Generator
 
         public void Initialize(IncrementalGeneratorInitializationContext context)
         {
-            Trace.WriteLine("begin");
             var generators = BuildGenerators();
             var defaultGenerator = new BasicCodeGenerator();
-            var debugOutputFile = context.AnalyzerConfigOptionsProvider.Select((config, _) =>
-            {
-                if (config.GlobalOptions.TryGetValue("build_property.Salvavida_Generator_Debug_Output", out var outputFile))
-                    return outputFile;
-                return null;
-            });
-            var paseOptions = context.ParseOptionsProvider.Select((options, _) =>
+            var debugger = context.AdditionalTextsProvider
+                .SelectMany((addText, token) =>
+                {
+                    var sourceText = addText.GetText(token);
+                    if (sourceText == null)
+                        return Array.Empty<string>();
+                    var lines = sourceText.Lines;
+                    return lines.Select((textLine, _) => sourceText.GetSubText(textLine.Span).ToString().Trim()).Where(t => !string.IsNullOrEmpty(t) && !t.StartsWith("#")).ToArray();
+                })
+                .Collect()
+                .Select((lines, _) =>
+                {
+                    string? debugFile = null;
+                    foreach (var l in lines)
+                    {
+                        if (l.StartsWith(DEBUG_FILE))
+                        {
+                            debugFile = l[DEBUG_FILE.Length..].Trim();
+                        }
+                    }
+                    IDebug debug = string.IsNullOrEmpty(debugFile) ? new TraceDebug() : new SourceDebug(debugFile!);
+                    return debug;
+                });
+            var parseOptions = context.ParseOptionsProvider.Select((options, _) =>
             {
                 var csOptions = (CSharpParseOptions)options;
                 return new GenerationConfig(generators, defaultGenerator, csOptions.LanguageVersion);
@@ -86,28 +98,40 @@ namespace Salvavida.Generator
                 static (node, _) => node is ClassDeclarationSyntax,
                 static (ctx, _) => ctx.TargetNode as ClassDeclarationSyntax)
                 .Where(static n => n is not null)
-                .Combine(debugOutputFile)
                 .Combine(context.CompilationProvider)
-                .Combine(paseOptions);
+                .Combine(parseOptions)
+                .Combine(debugger);
             context.RegisterSourceOutput(source, static (spc, src) =>
             {
-                var ((classNode, debugOutput), compilation) = src.Left;
-                var config = src.Right;
-                Execute(classNode!, compilation, spc, config, debugOutput);
+                var ((classNode, compilation), config) = src.Left;
+                var debugger = src.Right;
+                Execute(classNode!, compilation, spc, config, debugger);
+
+
             });
-            Trace.WriteLine("end");
+
+            context.RegisterSourceOutput(debugger, static (spc, src) =>
+            {
+                if (src is not SourceDebug sd)
+                    return;
+                var text = sd.ToString();
+                if(!string.IsNullOrEmpty(text))
+                {
+                    text = "/*\n" + text + "\n*/";
+                    spc.AddSource(sd.SourceFile, text);
+                }
+            });
         }
 
         static void Execute(ClassDeclarationSyntax classNode, Compilation compilation, SourceProductionContext spc, 
-            GenerationConfig config, string? debugOutputFile)
+            GenerationConfig config, IDebug debugger)
         {
-            var sb = debugOutputFile != null ? new StringBuilder() : null;
             var semanticModel = compilation.GetSemanticModel(classNode.SyntaxTree);
             var typeSymbol = semanticModel.GetDeclaredSymbol(classNode);
             if (typeSymbol == null)
                 return;
 
-            var ctx = new CodeGenerationContext(classNode, compilation, spc, semanticModel, typeSymbol, config.LanguageVersion, debugOutputFile);
+            var ctx = new CodeGenerationContext(classNode, compilation, spc, semanticModel, typeSymbol, config.LanguageVersion, debugger);
 
             if (!IsPartial(classNode))
             {
@@ -144,26 +168,13 @@ namespace Salvavida.Generator
 
             fileName += ".sv.g.cs";
             string? code = null;
-            Exception? ex = null;
             try
             {
                 code = generator.Generate(ctx);
             }
             catch (Exception x)
             {
-                ex = x;
-            }
-
-            if (sb != null)
-            {
-                sb.AppendLine(fileName);
-                if (ex == null)
-                    sb.AppendLine(code??"[empty]");
-                else
-                    sb.AppendLine(ex.ToString());
-                sb.AppendLine("=============================");
-                sb.AppendLine();
-                File.AppendAllText(debugOutputFile, sb.ToString());
+                debugger.Log(x.ToString());
             }
 
             if (!string.IsNullOrEmpty(code))

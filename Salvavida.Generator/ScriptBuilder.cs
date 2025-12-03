@@ -24,7 +24,7 @@ namespace Salvavida.Generator
                 _sb = null;
             }
         }
-        private readonly string NEW_LINE = Environment.NewLine;
+        private readonly string NEW_LINE = "\n";
 
         public ScriptBuilder()
         {

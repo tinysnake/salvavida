@@ -13,7 +13,8 @@
         <PackageTags>serializer</PackageTags>		
         <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    </PropertyGroup>
+		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+	</PropertyGroup>
     <PropertyGroup>
         <OutputPath>..\Salvavida\Package\CodeGen\</OutputPath>
     </PropertyGroup>

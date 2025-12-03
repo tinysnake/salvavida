@@ -11,10 +11,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<CompilerVisibleProperty Include="Salvavida_Generator_Debug_Output" />
-	</ItemGroup>
-
-	<ItemGroup>
 	  <PackageReference Include="MemoryPack" Version="1.21.3" />
 	</ItemGroup>
 
