@@ -1,11 +1,4 @@
 using System;
-using System.Threading;
-
-#if USE_UNITASK && !SV_FORCE_TASK
-using Task = Cysharp.Threading.Tasks.UniTask;
-#else
-using Task = System.Threading.Tasks.Task;
-#endif
 
 namespace Salvavida.DefaultImpl
 {
@@ -41,30 +34,26 @@ namespace Salvavida.DefaultImpl
         }
     }
 
-    public class Salvavida<TData> : Salvavida, ISalvavida<TData> where TData : SerializeRoot, ISavable, new()
+    public class Salvavida<TData> : Salvavida, ISalvavida<TData> where TData : ISerializeRoot, ISavable, new()
     {
         public Salvavida(string id, Serializer serializer)
             : base(id, serializer)
         {
         }
 
-        protected Action _onDataLoaded;
-        protected Func<Task> _onDataLoadedAsync;
-        protected Action _onDataSaved;
-        protected Func<Task> _onDataSavedAsync;
+        protected Action? _onDataLoaded;
+        protected Action? _onDataSaved;
 
         public TData? Data { get; private set; }
 
-        public void SetDataLoadedCallbacks(Action onDataLoaded, Func<Task> onDataLoadedAsync)
+        public void SetDataLoadedCallback(Action onDataLoaded)
         {
             _onDataLoaded = onDataLoaded;
-            _onDataLoadedAsync = onDataLoadedAsync;
         }
 
-        public void SetDataSavedCallbacks(Action onDataSaved, Func<Task> onDataSavedAsync)
+        public void SetDataSavedCallback(Action onDataSaved)
         {
             _onDataSaved = onDataSaved;
-            _onDataSavedAsync = onDataSavedAsync;
         }
 
         public override void Load()
