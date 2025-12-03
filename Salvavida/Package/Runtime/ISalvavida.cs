@@ -1,12 +1,4 @@
 using System;
-using System.Threading;
-
-#if USE_UNITASK && !SV_FORCE_TASK
-using Task = Cysharp.Threading.Tasks.UniTask;
-#else
-using Task = System.Threading.Tasks.Task;
-#endif
-
 
 namespace Salvavida
 {
@@ -16,11 +8,8 @@ namespace Salvavida
 
         void Save();
         void Load();
-        void Backup();
 
         Serializer Serializer { get; }
-
-        T CreateData<T>() where T : new();
     }
 
     public interface ISalvavida<T> : ISalvavida where T : ISavable, ISerializeRoot

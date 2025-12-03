@@ -45,13 +45,7 @@ namespace Salvavida
             set { _idGen = value; }
         }
 
-        public virtual T CreateData<T>() where T : new()
-        {
-            var obj = new T();
-            if (obj is ISavable sv)
-                sv.SvId = IdGenerator.GetId();
-            return obj;
-        }
+        public virtual T CreateData<T>() where T : new() => new();
 
         protected virtual SerializeContext CreateContext() => new();
 

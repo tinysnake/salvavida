@@ -15,7 +15,6 @@ namespace Salvavida.DefaultImpl
         public string Id { get; }
 
         public Serializer Serializer { get; }
-        public IBackupService? BackupService { get; set; }
 
         public T CreateData<T>() where T : new() => Serializer.CreateData<T>();
 
@@ -27,11 +26,6 @@ namespace Salvavida.DefaultImpl
         public abstract void Load();
 
         public abstract void Save();
-
-        public virtual void Backup()
-        {
-            BackupService?.Backup();
-        }
     }
 
     public class Salvavida<TData> : Salvavida, ISalvavida<TData> where TData : ISerializeRoot, ISavable, new()
@@ -61,26 +55,21 @@ namespace Salvavida.DefaultImpl
             if (Serializer == null)
                 throw new NullReferenceException(nameof(Serializer));
             var data = Serializer.FreshRead<TData>(Id);
-            var needsSave = false;
             if (data == null)
             {
                 data = Serializer.CreateData<TData>();
                 data.SvId = Id;
-                needsSave = true;
             }
             data.SetSerializer(Serializer);
             Data = data;
             _onDataLoaded?.Invoke();
-            if (needsSave)
-                Save();
         }
 
         public override void Save()
         {
             if (Serializer == null)
                 throw new NullReferenceException(nameof(Serializer));
-            if (Data != null)
-                Serializer.FreshSave(Data);
+            Data.Save();
             _onDataSaved?.Invoke();
         }
     }
