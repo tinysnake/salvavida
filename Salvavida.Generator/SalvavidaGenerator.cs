@@ -115,7 +115,7 @@ namespace Salvavida.Generator
                 if (src is not SourceDebug sd)
                     return;
                 var text = sd.ToString();
-                if(!string.IsNullOrEmpty(text))
+                if (!string.IsNullOrEmpty(text))
                 {
                     text = "/*\n" + text + "\n*/";
                     spc.AddSource(sd.SourceFile, text);
@@ -123,7 +123,7 @@ namespace Salvavida.Generator
             });
         }
 
-        static void Execute(ClassDeclarationSyntax classNode, Compilation compilation, SourceProductionContext spc, 
+        static void Execute(ClassDeclarationSyntax classNode, Compilation compilation, SourceProductionContext spc,
             GenerationConfig config, IDebug debugger)
         {
             var semanticModel = compilation.GetSemanticModel(classNode.SyntaxTree);
@@ -167,6 +167,7 @@ namespace Salvavida.Generator
             .Replace(">", "_");
 
             fileName += ".sv.g.cs";
+            debugger.Log($"[[Generation Start: {fileName}]]");
             string? code = null;
             try
             {
@@ -178,7 +179,11 @@ namespace Salvavida.Generator
             }
 
             if (!string.IsNullOrEmpty(code))
+            {
+                var log = $"Generated Code:\r\n{code ?? "[empty]"}";
+                debugger.Log(log);
                 spc.AddSource(fileName, code!);
+            }
         }
 
         public static bool ClassHasAttribute(ClassDeclarationSyntax classNode, SemanticModel semanticModel, string attributeName)
