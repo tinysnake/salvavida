@@ -47,7 +47,7 @@ namespace Salvavida
             if (ctx == null)
                 serializer.FreshDeleteAll(this);
             else
-                serializer.DeleteAll(ctx);
+                serializer.DeleteAllNoPushPath(ctx);
         }
 
         void ISavable.SetParent(ISavable? parent)

@@ -61,14 +61,14 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            serializer.SaveObject(_arr, ctx, SvId, PathBuilder.Type.Property);
+            serializer.SaveNoPushPath(_arr, ctx);
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
                 return;
-            var arr = serializer.ReadObject<T?[]>(ctx);
+            var arr = serializer.ReadNoPushPath<T?[]>(ctx);
             SwapSource(arr, false);
         }
 
@@ -283,8 +283,6 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);
-
             var tempIds = SvHelper.idListPool.Get();
             try
             {
@@ -297,14 +295,19 @@ namespace Salvavida
                             continue;
                         if (elem.SvId == null)
                             throw new ArgumentNullException("elem.SvId");
-                        elem.TrySerialize(serializer, ctx, PathBuilder.Type.Collection);
-                        tempIds.Add(elem.SvId);
+                        using (ctx.Path.UsePush(elem.SvId, PathBuilder.Type.Collection))
+                        {
+                            if (elem.IsDirty)
+                                elem.Serialize(serializer, ctx);
+                            if(serializer.HasNoPushPath(ctx))
+                                tempIds.Add(elem.SvId);
+                        }
                     }
-                    serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    serializer.Save(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 else
                 {
-                    serializer.DeleteObject(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 if (_idsOnDeserialized != null)
                 {
@@ -313,7 +316,7 @@ namespace Salvavida
                         var oldId = _idsOnDeserialized[i];
                         if (tempIds.IndexOf(oldId) < 0)
                         {
-                            serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                            serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
                         }
                     }
                 }
@@ -330,9 +333,14 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadObject<string[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+            string[] tempIds = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
+            {
+                if (serializer.HasNoPushPath(ctx))
+                    tempIds = serializer.ReadNoPushPath<string[]?>(ctx);
+            }
             T?[]? arr;
-            if (tempIds == null || tempIds.Length == 0)
+            if (tempIds == null)
                 arr = null;
             else
             {
@@ -340,7 +348,7 @@ namespace Salvavida
                 arr = new T[_idsOnDeserialized.Length];
                 for (var i = 0; i < _idsOnDeserialized.Length; i++)
                 {
-                    arr[i] = serializer.ReadObject<T?>(ctx, _idsOnDeserialized[i], PathBuilder.Type.Collection);
+                    arr[i] = serializer.Read<T?>(ctx, _idsOnDeserialized[i], PathBuilder.Type.Collection);
                 }
             }
             SwapSource(arr, false);

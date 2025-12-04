@@ -73,14 +73,14 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            serializer.SaveObject(_dict, ctx, SvId, PathBuilder.Type.Property);
+            serializer.SaveNoPushPath(_dict, ctx);
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
                 return;
-            var list = serializer.ReadObject<Dictionary<TKey, TValue?>>(ctx);
+            var list = serializer.ReadNoPushPath<Dictionary<TKey, TValue?>>(ctx);
             SwapSource(list, false);
         }
 
@@ -329,8 +329,6 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);
-
             var tempIds = SvHelper.idListPool.Get();
             try
             {
@@ -339,16 +337,24 @@ namespace Salvavida
                     foreach (var (key, value) in _dict)
                     {
                         var id = _idConverter.ConvertTo(key);
-#pragma warning disable CS8631 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match constraint type.
-                        value?.TrySerialize(serializer, ctx, PathBuilder.Type.Collection);
-#pragma warning restore CS8631 // The type cannot be used as type parameter in the generic type or method. Nullability of type argument doesn't match constraint type.
-                        tempIds.Add(id);
+                        using (ctx.Path.UsePush(id, PathBuilder.Type.Collection))
+                        {
+                            if (value == null)
+                                serializer.DeleteNoPushPath(ctx);
+                            else
+                            {
+                                if (value.IsDirty)
+                                    value.Serialize(serializer, ctx);
+                                if (serializer.HasNoPushPath(ctx))
+                                    tempIds.Add(id);
+                            }
+                        }
                     }
-                    serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    serializer.Save(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 else
                 {
-                    serializer.DeleteObject(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 if (_keysOnDeserialized != null)
                 {
@@ -356,7 +362,7 @@ namespace Salvavida
                     {
                         if (tempIds.IndexOf(oldId) < 0)
                         {
-                            serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                            serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
                         }
                     }
                 }
@@ -373,9 +379,14 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var tempIds = serializer.ReadObject<string[]?>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+            string[] tempIds = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
+            {
+                if (serializer.HasNoPushPath(ctx))
+                    tempIds = serializer.ReadNoPushPath<string[]?>(ctx);
+            }
             Dictionary<TKey, TValue?>? dict;
-            if (tempIds == null || tempIds.Length == 0)
+            if (tempIds == null)
                 dict = null;
             else
             {
@@ -383,7 +394,7 @@ namespace Salvavida
                 dict = new Dictionary<TKey, TValue?>();
                 foreach (var id in _keysOnDeserialized)
                 {
-                    dict[_idConverter.ConvertFrom(id)] = serializer.ReadObject<TValue?>(ctx, id, PathBuilder.Type.Collection);
+                    dict[_idConverter.ConvertFrom(id)] = serializer.Read<TValue?>(ctx, id, PathBuilder.Type.Collection);
                 }
             }
             SwapSource(dict, false);

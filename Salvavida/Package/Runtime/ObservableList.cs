@@ -11,12 +11,10 @@ namespace Salvavida
         public ObservableList(string propName, List<T?>? src, bool saveSeparately)
             : base(propName, saveSeparately)
         {
-            //_orderMatters = SvHelper.CheckIsSaveWithOrder<T>();
             SwapSource(src, false);
         }
 
         private List<T?>? _list;
-        //private readonly bool _orderMatters;
 
         public T? this[int index]
         {
@@ -61,14 +59,14 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            serializer.SaveObject(_list, ctx, SvId, PathBuilder.Type.Property);
+            serializer.SaveNoPushPath(_list, ctx);
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
                 return;
-            var list = serializer.ReadObject<List<T?>>(ctx);
+            var list = serializer.ReadNoPushPath<List<T?>>(ctx);
             SwapSource(list, false);
         }
 
@@ -357,7 +355,6 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            using var __s = ctx.Path.UsePush(SvId, PathBuilder.Type.Property);
 
             var tempIds = SvHelper.idListPool.Get();
             try
@@ -370,14 +367,19 @@ namespace Salvavida
                             continue;
                         if (string.IsNullOrEmpty(elem.SvId))
                             throw new ArgumentNullException("elem.SvId");
-                        elem.TrySerialize(serializer, ctx, PathBuilder.Type.Collection);
-                        tempIds.Add(elem.SvId);
+                        using (ctx.Path.UsePush(elem.SvId, PathBuilder.Type.Collection))
+                        {
+                            if (elem.IsDirty)
+                                elem.Serialize(serializer, ctx);
+                            if (serializer.HasNoPushPath(ctx))
+                                tempIds.Add(elem.SvId);
+                        }
                     }
-                    serializer.SaveObject(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    serializer.Save(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 else
                 {
-                    serializer.DeleteObject(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
                 if (_idsOnDeserialized != null)
                 {
@@ -385,7 +387,7 @@ namespace Salvavida
                     {
                         if (tempIds.IndexOf(oldId) < 0)
                         {
-                            serializer.DeleteObject(ctx, oldId, PathBuilder.Type.Collection);
+                            serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
                         }
                     }
                 }
@@ -405,11 +407,11 @@ namespace Salvavida
             string[]? tempIds = null;
             using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
             {
-                if (serializer.Has(ctx))
-                    tempIds = serializer.ReadObject<string[]?>(ctx);
+                if (serializer.HasNoPushPath(ctx))
+                    tempIds = serializer.ReadNoPushPath<string[]?>(ctx);
             }
             List<T?>? list;
-            if (tempIds == null || tempIds.Length == 0)
+            if (tempIds == null)
                 list = null;
             else
             {
@@ -417,7 +419,7 @@ namespace Salvavida
                 list = new List<T?>();
                 foreach (var id in _idsOnDeserialized)
                 {
-                    list.Add(serializer.ReadObject<T?>(ctx, id, PathBuilder.Type.Collection));
+                    list.Add(serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection));
                 }
             }
             SwapSource(list, false);
