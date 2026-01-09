@@ -1,8 +1,8 @@
 namespace Salvavida
 {
-    public delegate void PropertyChangeEventHandler<in T>(T obj, string propertyName);
+    public delegate void PropertyChangeEventHandler<T>(T obj, string propertyName);
 
-    public interface ISvPropertyChanged<out T>
+    public interface ISvPropertyChanged<T>
     {
         event PropertyChangeEventHandler<T> PropertyChanged;
     }

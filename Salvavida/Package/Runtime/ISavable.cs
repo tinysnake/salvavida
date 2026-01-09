@@ -20,7 +20,7 @@ namespace Salvavida
         void AfterDeserialize(Serializer serializer, SerializeContext ctx);
     }
 
-    public interface ISavable<out T> : ISavable, ISvPropertyChanged<T>
+    public interface ISavable<T> : ISavable, ISvPropertyChanged<T>
     {
 
     }
