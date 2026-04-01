@@ -7,4 +7,5 @@ obj/
 *.user
 /*.meta
 
+Salvavida.Generator.Debug/Generated/
 Salvavida.Generator.Debug/salvavida.output.log

@@ -8,6 +8,8 @@
 		<Salvavida_Generator_Debug_Output>$(MSBuildProjectDirectory)/salvavida.output.log</Salvavida_Generator_Debug_Output>
 		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
 		<BaseOutputPath>bin</BaseOutputPath>
+    	<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    	<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
 	</PropertyGroup>
 
 	<ItemGroup>
