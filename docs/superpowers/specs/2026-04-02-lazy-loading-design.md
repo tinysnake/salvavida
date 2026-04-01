@@ -58,9 +58,157 @@ IDictionaryLoader<TKey, TValue> (字典专用接口)
     "minDeletedCount": 100
   },
   "appendStartIndex": 1000,
-  "appendedCount": 50
+  "appendedCount": 50,
+  "dynamicConfig": {
+    "threshold": 2000,
+    "pageSize": 200,
+    "maxCachedPages": 20
+  }
 }
 ```
+
+### 动态配置序列化
+
+动态配置存储在集合的 metadata 中，与集合紧密绑定。
+
+**CollectionMetadata 结构：**
+
+```csharp
+class CollectionMetadata
+{
+    // 原有字段
+    public int Count;
+    public int PageSize;
+    public DictionaryLoadMode LoadMode;
+    public CacheStrategy CacheStrategy;
+    public int MaxCachedPages;
+    public TrimThreshold? TrimThreshold;
+    public int AppendStartIndex;
+    public int AppendedCount;
+    
+    // 动态配置（可为 null）
+    public LazyLoadConfig? DynamicConfig;
+}
+```
+
+**序列化时机：**
+
+1. **集合保存时**：如果 `_dynamicConfig` 被修改，写入 metadata
+2. **动态配置修改时**：标记集合为脏，等待下次保存
+
+**动态配置修改：**
+
+```csharp
+class LazyPageLoader<T>
+{
+    private LazyLoadConfig? _dynamicConfig;
+    private bool _dynamicConfigDirty;
+    
+    public void SetDynamicConfig(LazyLoadConfig config)
+    {
+        _rwLock.EnterWriteLock();
+        try
+        {
+            _dynamicConfig = config;
+            _dynamicConfigDirty = true;
+            
+            // 应用新配置
+            if (config.MaxCachedPages.HasValue)
+            {
+                _maxCachedPages = config.MaxCachedPages.Value;
+            }
+            if (config.CacheStrategy.HasValue)
+            {
+                _cacheStrategy = config.CacheStrategy.Value;
+            }
+            // ... 其他配置项
+        }
+        finally
+        {
+            _rwLock.ExitWriteLock();
+        }
+    }
+}
+```
+
+**Metadata 保存：**
+
+```csharp
+void UpdateMetadata(SerializeContext ctx)
+{
+    var metadata = new CollectionMetadata
+    {
+        Count = _totalElementCount + _appendedCount - _deletedCount,
+        PageSize = _pageSize,
+        LoadMode = _loadMode,
+        CacheStrategy = _cacheStrategy,
+        MaxCachedPages = _maxCachedPages,
+        TrimThreshold = _trimThreshold,
+        AppendStartIndex = _appendStartIndex,
+        AppendedCount = _appendedCount,
+        DynamicConfig = _dynamicConfigDirty ? _dynamicConfig : null,
+    };
+    
+    // 序列化 metadata
+    using var scope = ctx.Path.UsePush("__ob_metadata__", PathBuilder.Type.Property);
+    serializer.Save(metadata, ctx);
+    
+    _dynamicConfigDirty = false;
+}
+```
+
+**反序列化时读取动态配置：**
+
+```csharp
+void Deserialize(Serializer serializer, SerializeContext ctx)
+{
+    var metadata = ReadMetadata(ctx);
+    
+    // 读取动态配置
+    if (metadata.DynamicConfig != null)
+    {
+        _dynamicConfig = metadata.DynamicConfig;
+    }
+    
+    // 计算有效阈值
+    int threshold = GetEffectiveThreshold();
+    
+    if (metadata.Count > threshold)
+    {
+        // 创建懒加载策略，应用动态配置
+        _pageLoader = new LazyPageLoader<T>(this, _propertyName, _staticConfig, _dynamicConfig);
+    }
+    else
+    {
+        _pageLoader = new FullPageLoader<T>();
+        _pageLoader.LoadAll(serializer, ctx);
+    }
+}
+```
+
+**配置优先级实现：**
+
+```csharp
+int GetEffectiveThreshold()
+{
+    // 1. 动态配置（metadata 中存储）
+    if (_dynamicConfig?.Threshold > 0)
+        return _dynamicConfig.Threshold.Value;
+    
+    // 2. 编译时常量（Attribute）
+    if (_staticConfig.Threshold > 0)
+        return _staticConfig.Threshold;
+    
+    // 3. 全局默认
+    return GlobalConfig.DefaultLazyLoadThreshold;
+}
+```
+
+**首次保存 vs 后续保存：**
+
+- **首次保存**：metadata 中不包含 `dynamicConfig` 字段，使用静态配置
+- **后续保存**：如果运行时修改了动态配置，metadata 中包含 `dynamicConfig` 字段
+- **跨会话持久化**：动态配置在下次加载时从 metadata 恢复
 
 ## LazyPageLoader 设计
 
@@ -538,9 +686,12 @@ void Deserialize(Serializer serializer, SerializeContext ctx)
 
 ### CodeGenerator 生成的代码
 
+Generator 只负责生成编译时常量配置，动态配置由集合自身的 metadata 管理：
+
 ```csharp
 partial class MySavable : ISavable
 {
+    // 每个集合属性独立的静态配置
     private static readonly LazyLoadConfig s_itemsConfig = new LazyLoadConfig
     {
         Threshold = 1000,
@@ -554,9 +705,8 @@ partial class MySavable : ISavable
         PageSize = 100,
     };
     
-    private Dictionary<string, LazyLoadConfig>? _dynamicConfigs;
-    
     private ObservableList<ItemData>? _items;
+    private ObservableList<PlayerData>? _players;
     
     public ObservableList<ItemData> Items
     {
@@ -564,17 +714,25 @@ partial class MySavable : ISavable
         set => SetCollectionField(ref _items, value, nameof(Items), s_itemsConfig);
     }
     
-    public LazyLoadConfig? GetDynamicConfig(string propertyName)
+    public ObservableList<PlayerData> Players
     {
-        return _dynamicConfigs?.GetValueOrDefault(propertyName);
-    }
-    
-    public void SetDynamicConfig(string propertyName, LazyLoadConfig config)
-    {
-        _dynamicConfigs ??= new Dictionary<string, LazyLoadConfig>();
-        _dynamicConfigs[propertyName] = config;
+        get => _players ??= CreateCollection(nameof(Players), s_playersConfig);
+        set => SetCollectionField(ref _players, value, nameof(Players), s_playersConfig);
     }
 }
+```
+
+**动态配置修改通过集合自身 API：**
+
+```csharp
+// 用户代码修改动态配置
+items.SetDynamicConfig(new LazyLoadConfig
+{
+    MaxCachedPages = 20,
+    CacheStrategy = CacheStrategy.LRU,
+});
+
+// 下次保存时，动态配置会写入 metadata
 ```
 
 ## IPageLoader 接口
