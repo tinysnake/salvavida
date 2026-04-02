@@ -684,7 +684,7 @@ void Deserialize(Serializer serializer, SerializeContext ctx)
 | MaxCachedPages | `_dynamicConfig.MaxCachedPages` | `_staticConfig.MaxCachedPages` | `GlobalConfig.DefaultMaxCachedPages` |
 | TrimThreshold | `_dynamicConfig.TrimThreshold` | `_staticConfig.TrimThreshold` | `GlobalConfig.DefaultTrimThreshold` |
 
-### CodeGenerator 生成的代码
+### SourceGenerator 生成的代码
 
 Generator 只负责生成编译时常量配置，动态配置由集合自身的 metadata 管理：
 
