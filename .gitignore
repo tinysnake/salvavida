@@ -6,6 +6,7 @@ obj/
 .DS_Store
 *.user
 /*.meta
+.worktrees/
 
 Salvavida.Generator.Debug/Generated/
 Salvavida.Generator.Debug/salvavida.output.log
