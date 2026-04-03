@@ -371,7 +371,10 @@ namespace Salvavida
                 {
                     foreach (var oldId in _idsDeleted)
                     {
-                        serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
+                        if (tempIds.IndexOf(oldId) < 0)
+                        {
+                            serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
+                        }
                     }
                     _idsDeleted.Clear();
                 }
@@ -393,8 +396,9 @@ namespace Salvavida
             {
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
                 _list.Add(item);
+                OnChildDeserialized(item);
             }
-            _idsDeleted = new HashSet<string>();
+            _idsDeleted.Clear();
         }
 
         public override void SwapSource(List<T?>? list)
