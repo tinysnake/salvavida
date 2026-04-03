@@ -43,6 +43,10 @@ namespace Salvavida
         private HashSet<string> _idsDeleted = new();
         private Serializer? _serializer;
         private SerializeContext? _context;
+        private bool _needsRebalance;
+        private bool _needsBucketSplit;
+        private bool _needsBucketMerge;
+        private int _bucketMultiplier = 3;
 
         #endregion
 
@@ -73,12 +77,12 @@ namespace Salvavida
 
         private class PageData
         {
-            public T?[] Elements;
+            public List<T?> Elements;
             public bool IsDirty;
 
             public PageData(int pageSize)
             {
-                Elements = new T?[pageSize];
+                Elements = new List<T?>(pageSize);
                 IsDirty = false;
             }
         }
@@ -130,15 +134,12 @@ namespace Salvavida
         private PageData LoadPageFromStorage(int pageIndex)
         {
             var page = new PageData(_pageSize);
+            var ids = GetPageIds(pageIndex);
 
-            int startIdx = pageIndex * _pageSize;
-            int endIdx = Math.Min(startIdx + _pageSize, _totalElementCount);
-
-            for (int i = startIdx; i < endIdx; i++)
+            for (int i = 0; i < ids.Length; i++)
             {
-                string id = _allIds[i];
-                page.Elements[i - startIdx] = _serializer!.Read<T?>(_context!, id, PathBuilder.Type.Collection);
-                var elem = page.Elements[i - startIdx];
+                page.Elements.Add(_serializer!.Read<T?>(_context!, ids[i], PathBuilder.Type.Collection));
+                var elem = page.Elements[i];
                 if (elem != null)
                 {
                     OnChildDeserialized(elem);
@@ -190,20 +191,17 @@ namespace Salvavida
         private void FlushPage(int pageIndex, PageData page)
         {
             int startIdx = pageIndex * _pageSize;
-            int endIdx = Math.Min(startIdx + _pageSize, _totalElementCount);
 
-            for (int i = startIdx; i < endIdx; i++)
+            for (int i = 0; i < page.Elements.Count; i++)
             {
-                string id = _allIds[i];
-                var elem = page.Elements[i - startIdx];
-
+                var elem = page.Elements[i];
                 if (elem == null)
                 {
-                    _serializer!.Delete(_context!, id, PathBuilder.Type.Collection);
+                    _serializer!.Delete(_context!, elem.SvId ?? _allIds[startIdx + i], PathBuilder.Type.Collection);
                 }
                 else
                 {
-                    using (_context!.Path.UsePush(id, PathBuilder.Type.Collection))
+                    using (_context!.Path.UsePush(elem.SvId!, PathBuilder.Type.Collection))
                     {
                         elem.Serialize(_serializer!, _context!);
                     }
@@ -229,6 +227,46 @@ namespace Salvavida
             int skipCount = elementIndex - countBefore;
 
             return (_bucketMetas[bucketIdx].BucketId, skipCount);
+        }
+
+        private string[] GetPageIds(int pageIndex)
+        {
+            var (bucketId, skipCount) = FindBucketForIndex(pageIndex * _pageSize);
+            return _serializer!.ListCollectionIds(_context!, _svid!, bucketId, skipCount, _pageSize);
+        }
+
+        private string? GetElementRank(int index)
+        {
+            if (index < 0 || index >= _totalElementCount) return null;
+            var page = GetOrLoadPage(index / _pageSize);
+            var localIdx = index % _pageSize;
+            return localIdx < page.Elements.Count ? page.Elements[localIdx]?.SvId : null;
+        }
+
+        private void UpdateBucketCountForIndex(int elementIndex, int delta)
+        {
+            if (_bucketCumulativeIndex.Length == 0)
+            {
+                // No buckets yet — elements are in default bucket
+                return;
+            }
+
+            // Binary search for the bucket
+            int bucketIdx = Array.BinarySearch(_bucketCumulativeIndex, elementIndex + 1);
+            if (bucketIdx < 0) bucketIdx = ~bucketIdx;
+
+            _bucketMetas[bucketIdx].Count += delta;
+            _bucketCumulativeIndex[bucketIdx] += delta;
+
+            // Check if bucket split is needed
+            int bucketSize = _bucketMultiplier * _pageSize;
+            if (_bucketMetas[bucketIdx].Count > bucketSize)
+                _needsBucketSplit = true;
+        }
+
+        private int GetPageCount()
+        {
+            return (_totalElementCount + _pageSize - 1) / _pageSize;
         }
 
         #endregion
@@ -297,16 +335,16 @@ namespace Salvavida
             try
             {
                 var pageIndex = _totalElementCount / _pageSize;
-                var localIndex = _totalElementCount % _pageSize;
-
                 var page = GetOrLoadPage(pageIndex);
-                page.Elements[localIndex] = item;
+
+                string? prevId = GetElementRank(_totalElementCount - 1);
+                item.SvId = LexoRank.Between(prevId, null);
+
+                page.Elements.Add(item);
                 page.IsDirty = true;
                 _hasPendingWrites = true;
 
-                Array.Resize(ref _allIds, _totalElementCount + 1);
-                _allIds[_totalElementCount] = _totalElementCount.ToString();
-
+                UpdateBucketCountForIndex(_totalElementCount, 1);
                 _totalElementCount++;
 
                 OnItemSet(item, _totalElementCount - 1);
@@ -372,35 +410,35 @@ namespace Salvavida
             _rwLock.EnterWriteLock();
             try
             {
-                for (int i = index; i < _totalElementCount; i++)
+                string? prevId = GetElementRank(index - 1);
+                string? nextId = GetElementRank(index);
+
+                item.SvId = LexoRank.Between(prevId, nextId);
+
+                int targetPageIdx = index / _pageSize;
+                var page = GetOrLoadPage(targetPageIdx);
+
+                int localIdx = index % _pageSize;
+                page.Elements.Insert(localIdx, item);
+
+                while (page.Elements.Count > _pageSize)
                 {
-                    GetOrLoadPage(i / _pageSize);
+                    var nextPage = GetOrLoadPage(targetPageIdx + 1);
+                    var moved = page.Elements[page.Elements.Count - 1];
+                    page.Elements.RemoveAt(page.Elements.Count - 1);
+                    nextPage.Elements.Insert(0, moved);
+                    nextPage.IsDirty = true;
+                    page.IsDirty = true;
                 }
 
-                for (int i = _totalElementCount - 1; i >= index; i--)
-                {
-                    var srcPageIdx = i / _pageSize;
-                    var srcLocalIdx = i % _pageSize;
-                    var dstPageIdx = (i + 1) / _pageSize;
-                    var dstLocalIdx = (i + 1) % _pageSize;
-
-                    var srcPage = _loadedPages[srcPageIdx];
-                    var dstPage = GetOrLoadPage(dstPageIdx);
-
-                    dstPage.Elements[dstLocalIdx] = srcPage.Elements[srcLocalIdx];
-                    dstPage.IsDirty = true;
-                }
-
-                var insertPage = GetOrLoadPage(index / _pageSize);
-                insertPage.Elements[index % _pageSize] = item;
-                insertPage.IsDirty = true;
-
-                Array.Resize(ref _allIds, _totalElementCount + 1);
-                Array.Copy(_allIds, index, _allIds, index + 1, _totalElementCount - index);
-                _allIds[index] = index.ToString();
+                UpdateBucketCountForIndex(index, 1);
 
                 _totalElementCount++;
                 _hasPendingWrites = true;
+
+                var rankParts = item.SvId.Split('~');
+                if (rankParts.Length == 2 && rankParts[1].Length > LexoRank.REBALANCE_LENGTH_THRESHOLD)
+                    _needsRebalance = true;
 
                 OnItemSet(item, index);
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
@@ -419,38 +457,35 @@ namespace Salvavida
             _rwLock.EnterWriteLock();
             try
             {
-                for (int i = index; i < _totalElementCount; i++)
+                int targetPageIdx = index / _pageSize;
+                var page = GetOrLoadPage(targetPageIdx);
+                int localIdx = index % _pageSize;
+
+                var oldItem = page.Elements[localIdx];
+                var itemRank = oldItem?.SvId;
+                if (!string.IsNullOrEmpty(itemRank))
+                    _idsDeleted.Add(itemRank!);
+
+                page.Elements.RemoveAt(localIdx);
+                page.IsDirty = true;
+
+                if (page.Elements.Count < _pageSize / 2 && targetPageIdx + 1 < GetPageCount())
                 {
-                    GetOrLoadPage(i / _pageSize);
+                    var nextPage = GetOrLoadPage(targetPageIdx + 1);
+                    if (nextPage.Elements.Count > 0)
+                    {
+                        page.Elements.Add(nextPage.Elements[0]);
+                        nextPage.Elements.RemoveAt(0);
+                        nextPage.IsDirty = true;
+                        page.IsDirty = true;
+                    }
                 }
 
-                var oldItem = _loadedPages[index / _pageSize].Elements[index % _pageSize];
-                TryUnWatch(oldItem);
-
-                for (int i = index; i < _totalElementCount - 1; i++)
-                {
-                    var srcPageIdx = (i + 1) / _pageSize;
-                    var srcLocalIdx = (i + 1) % _pageSize;
-                    var dstPageIdx = i / _pageSize;
-                    var dstLocalIdx = i % _pageSize;
-
-                    var srcPage = _loadedPages[srcPageIdx];
-                    var dstPage = _loadedPages[dstPageIdx];
-
-                    dstPage.Elements[dstLocalIdx] = srcPage.Elements[srcLocalIdx];
-                    dstPage.IsDirty = true;
-                }
-
-                var lastPage = _loadedPages[(_totalElementCount - 1) / _pageSize];
-                lastPage.Elements[(_totalElementCount - 1) % _pageSize] = default;
-                lastPage.IsDirty = true;
-
-                Array.Copy(_allIds, index + 1, _allIds, index, _totalElementCount - index - 1);
-                Array.Resize(ref _allIds, _totalElementCount - 1);
-
+                UpdateBucketCountForIndex(index, -1);
                 _totalElementCount--;
                 _hasPendingWrites = true;
 
+                TryUnWatch(oldItem);
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, oldItem, index));
             }
             finally
@@ -655,6 +690,8 @@ namespace Salvavida
                     _bucketMetas = Array.Empty<BucketMeta>();
                     _bucketCumulativeIndex = Array.Empty<int>();
                 }
+
+                _bucketMultiplier = metadata.BucketMultiplier > 0 ? metadata.BucketMultiplier : 3;
 
                 _serializer = serializer;
                 _context = ctx;
