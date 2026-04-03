@@ -75,15 +75,33 @@ namespace Salvavida
                 return INITIAL_RANK;
             if (prevLexo.IsEmpty)
             {
-                // Insert at beginning: next / 2
-                DivideByTwo(nextBytes, nextLen, sumBytes, out int sl);
-                return EncodeResult(prefix, sumBytes, sl);
+                // Insert at beginning: prepend minimum char to next's lexoValue
+                // "0" + nextLexo is always lexicographically less than nextLexo
+                int newLen = nextLexo.Length + 1;
+                var buffer = newLen <= 64 ? stackalloc char[64] : new char[newLen];
+                buffer[0] = '0';
+                nextLexo.CopyTo(buffer.Slice(1));
+                int totalLen = prefix.Length + 1 + newLen;
+                var resultBuffer = totalLen <= 128 ? stackalloc char[128] : new char[totalLen];
+                prefix.CopyTo(resultBuffer);
+                resultBuffer[prefix.Length] = '~';
+                buffer.Slice(0, newLen).CopyTo(resultBuffer.Slice(prefix.Length + 1));
+                return resultBuffer.Slice(0, totalLen).ToString();
             }
             if (nextLexo.IsEmpty)
             {
-                // Insert at end: prev + 1
-                AddOne(prevBytes, prevLen, sumBytes, out int sl2);
-                return EncodeResult(prefix, sumBytes, sl2);
+                // Insert at end: append minimum char to prev's lexoValue
+                // This always produces a lexicographically greater string
+                int newLen = prevLexo.Length + 1;
+                var buffer = newLen <= 64 ? stackalloc char[64] : new char[newLen];
+                prevLexo.CopyTo(buffer);
+                buffer[prevLexo.Length] = '0';
+                int totalLen = prefix.Length + 1 + newLen;
+                var resultBuffer = totalLen <= 128 ? stackalloc char[128] : new char[totalLen];
+                prefix.CopyTo(resultBuffer);
+                resultBuffer[prefix.Length] = '~';
+                buffer.Slice(0, newLen).CopyTo(resultBuffer.Slice(prefix.Length + 1));
+                return resultBuffer.Slice(0, totalLen).ToString();
             }
 
             // Midpoint: (prev + next) / 2
@@ -106,7 +124,36 @@ namespace Salvavida
                 return res.Slice(0, totalLen3).ToString();
             }
 
-            return EncodeResult(prefix, sumBytes, midLen);
+            // Verify the midpoint is lexicographically between prev and next
+            // (numeric midpoint doesn't guarantee this for different-length strings)
+            string candidate = EncodeResult(prefix, sumBytes, midLen);
+            if (string.CompareOrdinal(candidate, prev) > 0 && string.CompareOrdinal(candidate, next) < 0)
+            {
+                return candidate;
+            }
+
+            // Fallback: append minimum char to prev's lexoValue
+            // If this equals next (when next starts with prev), append second-minimum char
+            int newLen3 = prevLexo.Length + 1;
+            var buf2 = newLen3 <= 64 ? stackalloc char[64] : new char[newLen3];
+            prevLexo.CopyTo(buf2);
+            buf2[prevLexo.Length] = '0';
+            
+            // Check if this equals next's lexoValue or is >= next
+            bool notLessThanNext = nextLexo.Length <= newLen3 && 
+                string.CompareOrdinal(new string(buf2.Slice(0, newLen3)), new string(nextLexo)) >= 0;
+            if (notLessThanNext)
+            {
+                // Use second character in charset to ensure we're between prev and next
+                buf2[prevLexo.Length] = CHARSET[1]; // '1'
+            }
+            
+            int totalLen5 = prefix.Length + 1 + newLen3;
+            var res2 = totalLen5 <= 128 ? stackalloc char[128] : new char[totalLen5];
+            prefix.CopyTo(res2);
+            res2[prefix.Length] = '~';
+            buf2.Slice(0, newLen3).CopyTo(res2.Slice(prefix.Length + 1));
+            return res2.Slice(0, totalLen5).ToString();
         }
 
         /// <summary>
@@ -279,11 +326,12 @@ namespace Salvavida
         {
             if (count <= 0) return Array.Empty<string>();
             var result = new string[count];
-            var range = (long)Math.Pow(62, Math.Max(1, MinLengthForCount(count))) - 1;
+            int minLen = Math.Max(1, MinLengthForCount(count));
+            var range = (long)Math.Pow(62, minLen) - 1;
             var step = range / (count + 1);
             for (int i = 0; i < count; i++)
             {
-                result[i] = Base62Encode(step * (i + 1));
+                result[i] = Base62Encode(step * (i + 1), minLen);
             }
             return result;
         }
@@ -303,9 +351,13 @@ namespace Salvavida
         }
 
         // Simple long-based encode for Rebalance (short ranks, no big number needed)
-        private static string Base62Encode(long value)
+        private static string Base62Encode(long value, int minLength = 1)
         {
-            if (value == 0) return CHARSET.Substring(0, 1);
+            if (value == 0)
+            {
+                if (minLength <= 1) return CHARSET.Substring(0, 1);
+                return new string(CHARSET[0], minLength);
+            }
             Span<char> buf = stackalloc char[16];
             int pos = 16;
             while (value > 0)
@@ -313,7 +365,17 @@ namespace Salvavida
                 buf[--pos] = CHARSET[(int)(value % 62)];
                 value /= 62;
             }
-            return buf.Slice(pos, 16 - pos).ToString();
+            int len = 16 - pos;
+            if (len < minLength)
+            {
+                // Pad with minimum character to ensure fixed length
+                Span<char> padded = stackalloc char[minLength];
+                for (int i = 0; i < minLength - len; i++)
+                    padded[i] = CHARSET[0];
+                buf.Slice(pos, len).CopyTo(padded.Slice(minLength - len));
+                return padded.Slice(0, minLength).ToString();
+            }
+            return buf.Slice(pos, len).ToString();
         }
     }
 }
