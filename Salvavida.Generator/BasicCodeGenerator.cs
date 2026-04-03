@@ -401,10 +401,10 @@ namespace Salvavida.Generator
             return colType switch
             {
                 CollectionType.Array => isSavable
-                    ? $"ObservableArraySavableBase<ObservableArraySavable<{typeSymbols[0].ToDisplayString(format)}>, {typeSymbols[0].ToDisplayString(format)}>"
+                    ? $"ObservableArraySavableBase<{typeSymbols[0].ToDisplayString(format)}>"
                     : $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
                 CollectionType.List => isSavable
-                    ? $"ObservableListSavableBase<ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>, {typeSymbols[0].ToDisplayString(format)}>"
+                    ? $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>"
                     : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
                 CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                 _ => throw new NotSupportedException()

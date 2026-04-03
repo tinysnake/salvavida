@@ -6,12 +6,10 @@ namespace Salvavida
 {
     /// <summary>
     /// Abstract base class for ObservableArraySavable collections.
-    /// Provides common interface for both full-load and lazy-load implementations.
+    /// Single generic parameter for user-facing API and polymorphism.
     /// </summary>
-    /// <typeparam name="TSelf">The concrete derived type (CRTP pattern)</typeparam>
     /// <typeparam name="T">Element type, must implement ISavable</typeparam>
-    public abstract class ObservableArraySavableBase<TSelf, T> : ObservableCollectionSavable<TSelf, T>, IList<T?>, IReadOnlyList<T?>, IList
-        where TSelf : ObservableArraySavableBase<TSelf, T>
+    public abstract class ObservableArraySavableBase<T> : ObservableCollectionSavable<ObservableArraySavableBase<T>, T>, IList<T?>, IReadOnlyList<T?>, IList
         where T : ISavable
     {
         protected ObservableArraySavableBase(string propName, bool saveSeparately)
@@ -26,6 +24,7 @@ namespace Salvavida
         public abstract bool Contains(T? item);
         public abstract int IndexOf(T? item);
         public abstract void SwapSource(T?[]? array);
+        public abstract IEnumerator<T?> GetEnumerator();
 
         #endregion
 
@@ -73,9 +72,29 @@ namespace Salvavida
                 array.SetValue(this[i], index + i);
         }
 
-        public abstract IEnumerator<T?> GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         #endregion
+    }
+
+    /// <summary>
+    /// CRTP intermediate layer providing precise CollectionChangeInfo type.
+    /// </summary>
+    public abstract class ObservableArraySavableBase<TSelf, T> : ObservableArraySavableBase<T>
+        where TSelf : ObservableArraySavableBase<TSelf, T>
+        where T : ISavable
+    {
+        protected ObservableArraySavableBase(string propName, bool saveSeparately)
+            : base(propName, saveSeparately)
+        {
+        }
+
+        protected override void OnChildChanged(T obj, string _)
+        {
+            _isChildrenDirty = true;
+            var index = IndexOf(obj);
+            if (index >= 0)
+                OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Replace((ObservableArraySavableBase<T>)(object)this, obj, obj, index));
+        }
     }
 }

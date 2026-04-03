@@ -257,7 +257,7 @@ namespace Salvavida
                     _hasPendingWrites = true;
                     TryWatch(value);
 
-                    OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Replace(this, oldValue, value, index));
+                    OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Replace(this, oldValue, value, index));
                 }
                 finally
                 {
@@ -289,7 +289,7 @@ namespace Salvavida
                 _totalElementCount++;
 
                 OnItemSet(item, _totalElementCount - 1);
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Add(this, item, _totalElementCount - 1));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, _totalElementCount - 1));
             }
             finally
             {
@@ -324,7 +324,7 @@ namespace Salvavida
                 _totalElementCount = 0;
                 _hasPendingWrites = false;
 
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Reset(this));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
             }
             finally
             {
@@ -382,7 +382,7 @@ namespace Salvavida
                 _hasPendingWrites = true;
 
                 OnItemSet(item, index);
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Add(this, item, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
             }
             finally
             {
@@ -430,7 +430,7 @@ namespace Salvavida
                 _totalElementCount--;
                 _hasPendingWrites = true;
 
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Remove(this, oldItem, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, oldItem, index));
             }
             finally
             {
@@ -553,7 +553,7 @@ namespace Salvavida
                 }
 
                 _isDirty = true;
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Reset(this));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
             }
             finally
             {
@@ -627,18 +627,6 @@ namespace Salvavida
             {
                 _rwLock.ExitWriteLock();
             }
-        }
-
-        #endregion
-
-        #region Child Changed
-
-        protected override void OnChildChanged(T obj, string _)
-        {
-            _isChildrenDirty = true;
-            var index = IndexOf(obj);
-            if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Replace(this, obj, obj, index));
         }
 
         #endregion

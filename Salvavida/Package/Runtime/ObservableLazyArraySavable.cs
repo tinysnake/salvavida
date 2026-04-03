@@ -258,7 +258,7 @@ namespace Salvavida
                     _hasPendingWrites = true;
                     TryWatch(value);
 
-                    OnCollectionChange(CollectionChangeInfo<ObservableLazyArraySavable<T>, T?>.Replace(this, oldValue, value, index));
+                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Replace(this, oldValue, value, index));
                 }
                 finally
                 {
@@ -374,7 +374,7 @@ namespace Salvavida
                 }
 
                 _isDirty = true;
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyArraySavable<T>, T?>.Reset(this));
+                OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Reset(this));
             }
             finally
             {
@@ -448,18 +448,6 @@ namespace Salvavida
             {
                 _rwLock.ExitWriteLock();
             }
-        }
-
-        #endregion
-
-        #region Child Changed
-
-        protected override void OnChildChanged(T obj, string _)
-        {
-            _isChildrenDirty = true;
-            var index = IndexOf(obj);
-            if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<ObservableLazyArraySavable<T>, T?>.Replace(this, obj, obj, index));
         }
 
         #endregion

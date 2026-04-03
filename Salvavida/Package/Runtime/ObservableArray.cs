@@ -242,7 +242,7 @@ namespace Salvavida
                     return;
                 _arr[index] = value;
                 TryWatch(value);
-                OnCollectionChange(CollectionChangeInfo<ObservableArraySavable<T>, T?>.Replace(this, oldVal, value, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Replace(this, oldVal, value, index));
                 TryUnWatch(oldVal);
             }
         }
@@ -356,7 +356,7 @@ namespace Salvavida
             if (_arr != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavable<T>, T?>.Reset(this));
+                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Reset(this));
                 for (var i = 0; i < _arr.Length; i++)
                 {
                     TryUnWatch(_arr[i]);
@@ -377,19 +377,11 @@ namespace Salvavida
             }
         }
 
-        protected override void OnChildChanged(T child, string _)
-        {
-            _isChildrenDirty = true;
-            var index = IndexOf(child);
-            if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<ObservableArraySavable<T>, T?>.Replace(this, child, child, index));
-        }
-
-        private CollectionChangeInfo<ObservableArraySavable<T>, T?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableArraySavableBase<T>, T?> CreateSaveAllEvent()
         {
             if (_arr == null)
                 throw new NullReferenceException(nameof(_arr));
-            return CollectionChangeInfo<ObservableArraySavable<T>, T?>.Add(this, _arr, 0);
+            return CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Add(this, _arr, 0);
         }
 
         public override bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;

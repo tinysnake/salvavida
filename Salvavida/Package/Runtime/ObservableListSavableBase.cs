@@ -6,7 +6,7 @@ namespace Salvavida
 {
     /// <summary>
     /// Abstract base class for ObservableListSavable collections.
-    /// Provides common interface for both full-load and lazy-load implementations.
+    /// Single generic parameter for user-facing API and polymorphism.
     /// </summary>
     /// <typeparam name="T">Element type, must implement ISavable</typeparam>
     public abstract class ObservableListSavableBase<T> : ObservableCollectionSavable<ObservableListSavableBase<T>, T>, IList<T?>, IReadOnlyList<T?>, IList
@@ -19,55 +19,17 @@ namespace Salvavida
 
         #region Abstract Methods
 
-        /// <summary>
-        /// Gets or sets the element at the specified index.
-        /// </summary>
         public abstract T? this[int index] { get; set; }
-
-        /// <summary>
-        /// Gets the number of elements in the collection.
-        /// </summary>
         public abstract int Count { get; }
-
-        /// <summary>
-        /// Adds an item to the collection.
-        /// </summary>
         public abstract void Add(T? item);
-
-        /// <summary>
-        /// Removes all items from the collection.
-        /// </summary>
         public abstract void Clear();
-
-        /// <summary>
-        /// Determines whether the collection contains a specific value.
-        /// </summary>
         public abstract bool Contains(T? item);
-
-        /// <summary>
-        /// Determines the index of a specific item.
-        /// </summary>
         public abstract int IndexOf(T? item);
-
-        /// <summary>
-        /// Inserts an item at the specified index.
-        /// </summary>
         public abstract void Insert(int index, T? item);
-
-        /// <summary>
-        /// Removes the first occurrence of a specific object.
-        /// </summary>
         public abstract bool Remove(T? item);
-
-        /// <summary>
-        /// Removes the item at the specified index.
-        /// </summary>
         public abstract void RemoveAt(int index);
-
-        /// <summary>
-        /// Replaces the entire collection with a new list.
-        /// </summary>
         public abstract void SwapSource(List<T?>? list);
+        public abstract IEnumerator<T?> GetEnumerator();
 
         #endregion
 
@@ -119,10 +81,29 @@ namespace Salvavida
             }
         }
 
-        public abstract IEnumerator<T?> GetEnumerator();
-
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         #endregion
+    }
+
+    /// <summary>
+    /// CRTP intermediate layer providing precise CollectionChangeInfo type.
+    /// </summary>
+    public abstract class ObservableListSavableBase<TSelf, T> : ObservableListSavableBase<T>
+        where TSelf : ObservableListSavableBase<TSelf, T>
+        where T : ISavable
+    {
+        protected ObservableListSavableBase(string propName, bool saveSeparately)
+            : base(propName, saveSeparately)
+        {
+        }
+
+        protected override void OnChildChanged(T obj, string _)
+        {
+            _isChildrenDirty = true;
+            var index = IndexOf(obj);
+            if (index >= 0)
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Replace((ObservableListSavableBase<T>)(object)this, obj, obj, index));
+        }
     }
 }

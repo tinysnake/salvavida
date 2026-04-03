@@ -311,7 +311,7 @@ namespace Salvavida
                     return;
                 _list[index] = value;
                 OnItemSet(value, index);
-                OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Replace(this, oldValue, value, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Replace(this, oldValue, value, index));
                 TryUnWatch(oldValue);
             }
         }
@@ -422,7 +422,7 @@ namespace Salvavida
             if (_list != null)
             {
                 if (notifyChanges)
-                    OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Reset(this));
+                    OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
                 for (var i = 0; i < _list.Count; i++)
                 {
                     TryUnWatch(_list[i]);
@@ -443,19 +443,11 @@ namespace Salvavida
             }
         }
 
-        protected override void OnChildChanged(T obj, string _)
-        {
-            _isChildrenDirty = true;
-            var index = IndexOf(obj);
-            if (index >= 0)
-                OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Replace(this, obj, obj, index));
-        }
-
-        private CollectionChangeInfo<ObservableListSavable<T>, T?> CreateSaveAllEvent()
+        private CollectionChangeInfo<ObservableListSavableBase<T>, T?> CreateSaveAllEvent()
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
-            return CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, _list, 0);
+            return CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, _list, 0);
         }
 
         public override void Add(T? item)
@@ -465,7 +457,7 @@ namespace Salvavida
             var index = _list.Count;
             _list.Add(item);
             OnItemSet(item, index);
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
         }
 
         public void AddRange(IList<T?> collection)
@@ -479,7 +471,7 @@ namespace Salvavida
                 var item = collection[i];
                 OnItemSet(item, index);
             }
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, collection, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));
         }
 
         private void OnItemSet(T? item, int index)
@@ -495,7 +487,7 @@ namespace Salvavida
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Reset(this));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
             foreach (var item in _list)
             {
                 TryUnWatch(item);
@@ -517,7 +509,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             _list.Insert(index, item);
             OnItemSet(item, index);
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
         }
 
         public void InsertRange(int index, IList<T?> collection)
@@ -530,7 +522,7 @@ namespace Salvavida
                 var item = collection[i];
                 OnItemSet(item, i + index);
             }
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, collection, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));
         }
 
         public override bool Remove(T? item)
@@ -541,7 +533,7 @@ namespace Salvavida
             if (index >= 0)
             {
                 _list.RemoveAt(index);
-                OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, item, index));
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, item, index));
                 TryUnWatch(item);
                 return true;
             }
@@ -554,7 +546,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var arr = new T?[count];
             _list.CopyTo(index, arr, 0, count);
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, arr, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, arr, index));
             foreach (var item in arr)
             {
                 TryUnWatch(item);
@@ -568,7 +560,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var item = _list[index];
             _list.RemoveAt(index);
-            OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, item, index));
+            OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, item, index));
             TryUnWatch(item);
         }
 
