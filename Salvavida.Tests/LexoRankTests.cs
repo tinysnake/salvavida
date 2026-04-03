@@ -56,5 +56,56 @@ namespace Salvavida.Tests
             var result = LexoRank.Between("A~m", null);
             Assert.That(result, Is.GreaterThan("A~m").Using<string>(StringComparer.Ordinal));
         }
+
+        [Test]
+        public void Rebalance_ProducesSortedRanks()
+        {
+            var ranks = LexoRank.Rebalance(10);
+            Assert.That(ranks.Length, Is.EqualTo(10));
+            for (int i = 1; i < ranks.Length; i++)
+            {
+                Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));
+            }
+        }
+
+        [Test]
+        public void Rebalance_ZeroCount_ReturnsEmpty()
+        {
+            var ranks = LexoRank.Rebalance(0);
+            Assert.That(ranks, Is.Empty);
+        }
+
+        [Test]
+        public void Rebalance_SingleElement_ReturnsOneRank()
+        {
+            var ranks = LexoRank.Rebalance(1);
+            Assert.That(ranks.Length, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void NeedsRebalance_SingleElement_ReturnsFalse()
+        {
+            Assert.That(LexoRank.NeedsRebalance(1, 10), Is.False);
+        }
+
+        [Test]
+        public void NeedsRebalance_BelowThreshold_ReturnsFalse()
+        {
+            Assert.That(LexoRank.NeedsRebalance(100, 3), Is.False);
+        }
+
+        [Test]
+        public void NeedsRebalance_AboveThreshold_ReturnsTrue()
+        {
+            Assert.That(LexoRank.NeedsRebalance(100, 6), Is.True);
+        }
+
+        [Test]
+        public void Compare_MatchesStringCompareOrdinal()
+        {
+            Assert.That(LexoRank.Compare("A~a", "A~b"), Is.EqualTo(string.CompareOrdinal("A~a", "A~b")));
+            Assert.That(LexoRank.Compare("A~z", "B~a"), Is.EqualTo(string.CompareOrdinal("A~z", "B~a")));
+            Assert.That(LexoRank.Compare("A~m", "A~m"), Is.EqualTo(0));
+        }
     }
 }
