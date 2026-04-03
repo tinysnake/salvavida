@@ -168,6 +168,7 @@ namespace Salvavida.Generator
             AttributeData? propNameAttr = null;
             AttributeData? ignoreAttr = null;
             AttributeData? saveSeparatelyAttr = null;
+            AttributeData? lazyLoadAttr = null;
 
             var attrs = symbol.GetAttributes();
 
@@ -181,6 +182,8 @@ namespace Salvavida.Generator
                     ignoreAttr = attrData;
                 else if (attrName == CodeGenHelper.SAVE_SEPARATELY_ATTRIBUTE_NAME)
                     saveSeparatelyAttr = attrData;
+                else if (attrName == "Salvavida.LazyLoadAttribute")
+                    lazyLoadAttr = attrData;
             }
 
             if (ignoreAttr != null)
@@ -266,8 +269,9 @@ namespace Salvavida.Generator
                 _infoStore!.savableMembers.Add(propertyName);
                 var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols);
                 var elemTypeString = elemTypeSymbols.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                var isSavable = IsTypeISavable(elemTypeSymbols.Last());
                 WriteCollectionProperty(sb, ctx, propertyName, fieldName,
-                    typeSymbol, collectionTypeString, elemTypeString, saveSeparately);
+                    typeSymbol, collectionTypeString, elemTypeString, saveSeparately, isSavable, lazyLoadAttr);
             }
         }
 
@@ -316,8 +320,36 @@ namespace Salvavida.Generator
         }
 
         protected virtual void WriteCollectionProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName,
-            ITypeSymbol typeSymbol, string collectionTypeString, string elemTypeString, bool saveSeparately)
+            ITypeSymbol typeSymbol, string collectionTypeString, string elemTypeString, bool saveSeparately, bool isSavable, AttributeData? lazyLoadAttr)
         {
+            if (lazyLoadAttr != null && isSavable)
+            {
+                int threshold = 1000;
+                int pageSize = 100;
+                int maxCachedPages = 10;
+                string cacheStrategy = "LRU";
+
+                foreach (var namedArg in lazyLoadAttr.NamedArguments)
+                {
+                    switch (namedArg.Key)
+                    {
+                        case "Threshold": threshold = (int)namedArg.Value.Value!; break;
+                        case "PageSize": pageSize = (int)namedArg.Value.Value!; break;
+                        case "MaxCachedPages": maxCachedPages = (int)namedArg.Value.Value!; break;
+                        case "CacheStrategy": cacheStrategy = namedArg.Value.Value!.ToString()!; break;
+                    }
+                }
+
+                sb.WriteLine($"private static readonly LazyLoadConfig s_{fieldName}Config = new LazyLoadConfig");
+                sb.WriteLine("{");
+                sb.WriteLine($"    Threshold = {threshold},");
+                sb.WriteLine($"    PageSize = {pageSize},");
+                sb.WriteLine($"    MaxCachedPages = {maxCachedPages},");
+                sb.WriteLine($"    CacheStrategy = CacheStrategy.{cacheStrategy}");
+                sb.WriteLine("};");
+                sb.WriteLine();
+            }
+
             AddAttributePreventSerialize(sb, false);
             sb.WriteLine($"private {collectionTypeString} {fieldName}Ob;");
             AddAttributePreventSerialize(sb, false);
