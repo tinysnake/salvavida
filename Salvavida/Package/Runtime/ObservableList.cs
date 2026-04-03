@@ -277,6 +277,7 @@ namespace Salvavida
 
         private List<T?>? _list;
         private HashSet<string> _idsDeleted = new();
+        private bool _needsRebalance;
         //private readonly bool _orderMatters;
 
         public override bool IsDirty
@@ -342,47 +343,58 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            var tempIds = SvHelper.idListPool.Get();
-            try
+            if (_needsRebalance && _list != null)
             {
-                if (_list != null)
+                var newRanks = LexoRank.Rebalance(_list.Count);
+                var oldIds = SvHelper.idListPool.Get();
+                try
                 {
-                    foreach (var elem in _list)
+                    for (int i = 0; i < _list.Count; i++)
                     {
-                        if (elem == null)
-                            continue;
-                        if (string.IsNullOrEmpty(elem.SvId))
-                            throw new ArgumentNullException("elem.SvId");
-                        using (ctx.Path.UsePush(elem.SvId, PathBuilder.Type.Collection))
-                        {
-                            if (elem.IsDirty)
-                                elem.Serialize(serializer, ctx);
-                            if (serializer.HasNoPushPath(ctx))
-                                tempIds.Add(elem.SvId);
-                        }
+                        if (_list[i] != null && !string.IsNullOrEmpty(_list[i].SvId))
+                            oldIds.Add(_list[i].SvId);
+                        _list[i].SvId = LexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
                     }
-                    serializer.Save(tempIds, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
-                }
-                else
-                {
-                    serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
-                }
-                if (_idsDeleted.Count > 0)
-                {
-                    foreach (var oldId in _idsDeleted)
+                    for (int i = 0; i < _list.Count; i++)
                     {
-                        if (tempIds.IndexOf(oldId) < 0)
-                        {
-                            serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
-                        }
+                        serializer.Save(_list[i], ctx, PathBuilder.Type.Collection);
                     }
-                    _idsDeleted.Clear();
+                    foreach (var oldId in oldIds)
+                    {
+                        serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
+                    }
+                }
+                finally
+                {
+                    SvHelper.idListPool.Return(oldIds);
+                }
+                _needsRebalance = false;
+            }
+
+            for (int i = 0; i < _list.Count; i++)
+            {
+                var item = _list[i];
+                if (item != null && item.IsDirty)
+                {
+                    serializer.Save(item, ctx, PathBuilder.Type.Collection);
                 }
             }
-            finally
+
+            if (_idsDeleted.Count > 0)
             {
-                SvHelper.idListPool.Return(tempIds);
+                foreach (var deletedId in _idsDeleted)
+                {
+                    serializer.Delete(ctx, deletedId, PathBuilder.Type.Collection);
+                }
+                _idsDeleted.Clear();
             }
+
+            var metadata = new CollectionMetadata
+            {
+                Count = _list?.Count ?? 0,
+                IsLazyLoaded = false
+            };
+            serializer.Save(metadata, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
@@ -511,6 +523,10 @@ namespace Salvavida
             string? nextId = index < _list.Count ? _list[index]?.SvId : null;
 
             item.SvId = LexoRank.Between(prevId, nextId);
+
+            var rankParts = item.SvId.Split('~');
+            if (rankParts.Length == 2 && rankParts[1].Length > LexoRank.REBALANCE_LENGTH_THRESHOLD)
+                _needsRebalance = true;
 
             _list.Insert(index, item);
             OnItemSet(item, index);
