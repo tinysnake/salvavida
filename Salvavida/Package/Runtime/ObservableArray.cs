@@ -198,7 +198,7 @@ namespace Salvavida
         }
     }
 
-    public sealed class ObservableArraySavable<T> : ObservableCollectionSavable<ObservableArraySavable<T>, T>, IList<T?>, IReadOnlyList<T?>, IList, IEnumerable<T?>, IEnumerable, ICollectionWrapper<T?[]>
+    public sealed class ObservableArraySavable<T> : ObservableArraySavableBase<ObservableArraySavable<T>, T>, ICollectionWrapper<T?[]>
         where T : ISavable
     {
         public ObservableArraySavable(string propName, T?[]? src, bool saveSeparately)
@@ -230,7 +230,7 @@ namespace Salvavida
             }
         }
 
-        public T? this[int index]
+        public override T? this[int index]
         {
             get => _arr == null ? throw new NullReferenceException(nameof(_arr)) : _arr[index];
             set
@@ -247,17 +247,7 @@ namespace Salvavida
             }
         }
 
-        object? IList.this[int index] { get => this[index]; set => this[index] = (T?)value; }
-
-        public int Count => _arr?.Length ?? 0;
-
-        public bool IsReadOnly => false;
-
-        bool IList.IsFixedSize => true;
-
-        bool ICollection.IsSynchronized => _arr?.IsSynchronized ?? false;
-
-        object? ICollection.SyncRoot => _arr?.SyncRoot ?? null;
+        public override int Count => _arr?.Length ?? 0;
 
         public T?[]? RetrieveSource() => _arr;
 
@@ -355,7 +345,7 @@ namespace Salvavida
         }
 
 
-        public void SwapSource(T?[]? array)
+        public override void SwapSource(T?[]? array)
         {
             _isDirty = true;
             SwapSource(array, true);
@@ -402,43 +392,13 @@ namespace Salvavida
             return CollectionChangeInfo<ObservableArraySavable<T>, T?>.Add(this, _arr, 0);
         }
 
-        public bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;
+        public override bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;
 
-        bool IList.Contains(object value) => Contains((T?)value);
+        public ArrayEnumerator GetEnumeratorStruct() => _arr == null ? throw new NullReferenceException(nameof(_arr)) : new(_arr);
 
-        public ArrayEnumerator GetEnumerator() => _arr == null ? throw new NullReferenceException(nameof(_arr)) : new(_arr);
+        public override IEnumerator<T?> GetEnumerator() => GetEnumeratorStruct();
 
-        IEnumerator<T?> IEnumerable<T?>.GetEnumerator() => GetEnumerator();
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        void ICollection<T?>.CopyTo(T?[] array, int arrayIndex) => _arr?.CopyTo(array, arrayIndex);
-
-        void ICollection.CopyTo(Array array, int index) => _arr?.CopyTo(array, index);
-
-        public int IndexOf(T? item) => Array.IndexOf(_arr, item);
-
-        int IList.IndexOf(object value) => IndexOf((T?)value);
-
-        void IList<T?>.Insert(int index, T? item) => throw new NotSupportedException();
-
-        void IList.Insert(int index, object value) => throw new NotSupportedException();
-
-        void ICollection<T?>.Add(T? item) => throw new NotSupportedException();
-
-        int IList.Add(object value) => throw new NotSupportedException();
-
-        void ICollection<T?>.Clear() => throw new NotSupportedException();
-
-        void IList.Clear() => throw new NotSupportedException();
-
-        void IList.Remove(object value) => throw new NotSupportedException();
-
-        void IList<T?>.RemoveAt(int index) => throw new NotSupportedException();
-
-        bool ICollection<T?>.Remove(T? item) => throw new NotSupportedException();
-
-        void IList.RemoveAt(int index) => throw new NotSupportedException();
+        public override int IndexOf(T? item) => Array.IndexOf(_arr, item);
 
         public struct ArrayEnumerator : IEnumerator<T?>
         {
