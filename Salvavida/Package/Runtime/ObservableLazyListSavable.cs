@@ -26,6 +26,8 @@ namespace Salvavida
         private readonly Dictionary<int, PageData> _loadedPages = new();
         private int _totalElementCount;
         private string[] _allIds = Array.Empty<string>();
+        private int[] _bucketCumulativeIndex = Array.Empty<int>();
+        private BucketMeta[] _bucketMetas = Array.Empty<BucketMeta>();
 
         #endregion
 
@@ -38,6 +40,7 @@ namespace Salvavida
         #region State Tracking
 
         private bool _hasPendingWrites;
+        private HashSet<string> _idsDeleted = new();
         private Serializer? _serializer;
         private SerializeContext? _context;
 
@@ -208,6 +211,24 @@ namespace Salvavida
             }
 
             page.IsDirty = false;
+        }
+
+        private (string? bucketId, int skipCount) FindBucketForIndex(int elementIndex)
+        {
+            if (_bucketCumulativeIndex.Length == 0)
+            {
+                // No buckets yet — all elements in default bucket "A"
+                return (LexoRank.DEFAULT_PREFIX, elementIndex);
+            }
+
+            // Binary search for the bucket
+            int bucketIdx = Array.BinarySearch(_bucketCumulativeIndex, elementIndex + 1);
+            if (bucketIdx < 0) bucketIdx = ~bucketIdx; // first bucket with cumulative > elementIndex
+
+            int countBefore = bucketIdx > 0 ? _bucketCumulativeIndex[bucketIdx - 1] : 0;
+            int skipCount = elementIndex - countBefore;
+
+            return (_bucketMetas[bucketIdx].BucketId, skipCount);
         }
 
         #endregion
@@ -613,8 +634,26 @@ namespace Salvavida
                     metadata = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
                 }
 
-                _allIds = metadata.Ids ?? Array.Empty<string>();
                 _totalElementCount = metadata.Count;
+                _idsDeleted = new HashSet<string>();
+
+                // Build cumulative bucket index
+                if (metadata.BucketMetas != null && metadata.BucketMetas.Length > 0)
+                {
+                    _bucketMetas = metadata.BucketMetas;
+                    _bucketCumulativeIndex = new int[metadata.BucketMetas.Length];
+                    int cumulative = 0;
+                    for (int i = 0; i < metadata.BucketMetas.Length; i++)
+                    {
+                        cumulative += metadata.BucketMetas[i].Count;
+                        _bucketCumulativeIndex[i] = cumulative;
+                    }
+                }
+                else
+                {
+                    _bucketMetas = Array.Empty<BucketMeta>();
+                    _bucketCumulativeIndex = Array.Empty<int>();
+                }
 
                 _serializer = serializer;
                 _context = ctx;
