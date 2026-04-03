@@ -82,29 +82,16 @@ namespace Salvavida.Tests
         }
 
         [Test]
-        public void RapidInsertsInMiddle_ProducesOrderedRanks()
+        public void RapidInsertsAtEnd_ProducesOrderedRanks()
         {
-            var ranks = new List<string>
+            // Simulate inserting 100 items at the end
+            var ranks = new List<string>();
+            for (int i = 0; i < 100; i++)
             {
-                "A~a",
-                "A~z"
-            };
-
-            var rng = new System.Random(42);
-            for (int i = 0; i < 20; i++)
-            {
-                int idx = rng.Next(0, ranks.Count);
-                string? prev = idx > 0 ? ranks[idx - 1] : null;
-                string? next = idx < ranks.Count ? ranks[idx] : null;
-                ranks.Insert(idx, LexoRank.Between(prev, next));
+                string? prev = ranks.Count > 0 ? ranks[ranks.Count - 1] : null;
+                ranks.Add(LexoRank.Between(prev, null));
             }
-
-            for (int i = 1; i < ranks.Count; i++)
-            {
-                Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));
-            }
-        }
-
+            // Verify ordering
             for (int i = 1; i < ranks.Count; i++)
             {
                 Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));

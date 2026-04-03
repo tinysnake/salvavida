@@ -139,10 +139,9 @@ namespace Salvavida
             prevLexo.CopyTo(buf2);
             buf2[prevLexo.Length] = '0';
             
-            // Check if this equals next's lexoValue or is >= next
-            bool notLessThanNext = nextLexo.Length <= newLen3 && 
-                string.CompareOrdinal(new string(buf2.Slice(0, newLen3)), new string(nextLexo)) >= 0;
-            if (notLessThanNext)
+            var candidateStr = new string(buf2.Slice(0, newLen3));
+            // Check if candidate >= next (would violate ordering)
+            if (string.CompareOrdinal(candidateStr, new string(nextLexo)) >= 0)
             {
                 // Use second character in charset to ensure we're between prev and next
                 buf2[prevLexo.Length] = CHARSET[1]; // '1'
