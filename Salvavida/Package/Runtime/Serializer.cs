@@ -345,31 +345,13 @@ namespace Salvavida
 
             if (metadata == null || !metadata.IsLazyLoaded || metadata.Count <= (config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold))
             {
-                var ids = metadata?.Ids;
-                if (ids == null)
-                {
-                    src = null;
-                    var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
-                    if (saveSeparately)
-                    {
-                        ob.Deserialize(this, ctx);
-                        src = ob.RetrieveSource();
-                    }
-                    return ob;
-                }
-
-                src = new List<T?>(ids.Length);
-                foreach (var id in ids)
-                {
-                    src.Add(Read<T?>(ctx, id, PathBuilder.Type.Collection));
-                }
-                var fullCol = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
+                var ob = new ObservableListSavable<T>(propName.ToString(), null, saveSeparately);
                 if (saveSeparately)
                 {
-                    fullCol.Deserialize(this, ctx);
-                    src = fullCol.RetrieveSource();
+                    ob.Deserialize(this, ctx);
+                    src = ob.RetrieveSource();
                 }
-                return fullCol;
+                return ob;
             }
             else
             {

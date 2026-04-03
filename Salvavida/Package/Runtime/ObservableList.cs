@@ -276,7 +276,7 @@ namespace Salvavida
         }
 
         private List<T?>? _list;
-        private string[]? _idsOnDeserialized;
+        private HashSet<string> _idsDeleted = new();
         //private readonly bool _orderMatters;
 
         public override bool IsDirty
@@ -367,48 +367,34 @@ namespace Salvavida
                 {
                     serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
                 }
-                if (_idsOnDeserialized != null)
+                if (_idsDeleted.Count > 0)
                 {
-                    foreach (var oldId in _idsOnDeserialized)
+                    foreach (var oldId in _idsDeleted)
                     {
-                        if (tempIds.IndexOf(oldId) < 0)
-                        {
-                            serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
-                        }
+                        serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
                     }
+                    _idsDeleted.Clear();
                 }
             }
             finally
             {
                 SvHelper.idListPool.Return(tempIds);
             }
-
-            _idsOnDeserialized = null;
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
                 return;
-            string[]? tempIds = null;
-            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
+            using var listScope = ctx.Path.UsePush(_svid!, PathBuilder.Type.Property);
+            var ids = serializer.ListCollectionIds(ctx, _svid!);
+            _list = new List<T?>();
+            foreach (var id in ids)
             {
-                if (serializer.HasNoPushPath(ctx))
-                    tempIds = serializer.ReadNoPushPath<string[]?>(ctx);
+                var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
+                _list.Add(item);
             }
-            List<T?>? list;
-            if (tempIds == null)
-                list = null;
-            else
-            {
-                _idsOnDeserialized = tempIds.ToArray();
-                list = new List<T?>();
-                foreach (var id in _idsOnDeserialized)
-                {
-                    list.Add(serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection));
-                }
-            }
-            SwapSource(list, false);
+            _idsDeleted = new HashSet<string>();
         }
 
         public override void SwapSource(List<T?>? list)
@@ -422,7 +408,14 @@ namespace Salvavida
             if (_list != null)
             {
                 if (notifyChanges)
+                {
+                    foreach (var item in _list)
+                    {
+                        if (item != null && !string.IsNullOrEmpty(item.SvId))
+                            _idsDeleted.Add(item.SvId);
+                    }
                     OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
+                }
                 for (var i = 0; i < _list.Count; i++)
                 {
                     TryUnWatch(_list[i]);
@@ -490,6 +483,8 @@ namespace Salvavida
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
             foreach (var item in _list)
             {
+                if (item != null && !string.IsNullOrEmpty(item.SvId))
+                    _idsDeleted.Add(item.SvId);
                 TryUnWatch(item);
             }
             _list.Clear();
@@ -532,6 +527,8 @@ namespace Salvavida
             var index = _list.IndexOf(item);
             if (index >= 0)
             {
+                if (item != null && !string.IsNullOrEmpty(item.SvId))
+                    _idsDeleted.Add(item.SvId);
                 _list.RemoveAt(index);
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, item, index));
                 TryUnWatch(item);
@@ -549,6 +546,8 @@ namespace Salvavida
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, arr, index));
             foreach (var item in arr)
             {
+                if (item != null && !string.IsNullOrEmpty(item.SvId))
+                    _idsDeleted.Add(item.SvId);
                 TryUnWatch(item);
             }
             _list.RemoveRange(index, count);
@@ -559,6 +558,8 @@ namespace Salvavida
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
             var item = _list[index];
+            if (item != null && !string.IsNullOrEmpty(item.SvId))
+                _idsDeleted.Add(item.SvId);
             _list.RemoveAt(index);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, item, index));
             TryUnWatch(item);
