@@ -274,30 +274,160 @@ namespace Salvavida
 
         protected abstract T? DoReadImpl<T>(SerializeContext ctx);
 
-        public ObservableArraySavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T?[]? src) where T : ISavable
+        public ObservableArraySavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref T?[]? src, LazyLoadConfig? config = null) where T : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
-            if (saveSeparately)
+
+            CollectionMetadata? metadata = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
             {
-                ob.Deserialize(this, ctx);
-                src = ob.RetrieveSource();
+                if (HasNoPushPath(ctx))
+                    metadata = ReadNoPushPath<CollectionMetadata?>(ctx);
             }
 
-            return ob;
+            if (metadata == null || !metadata.IsLazyLoaded || metadata.Count <= (config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold))
+            {
+                var ids = metadata?.Ids;
+                if (ids == null)
+                {
+                    src = null;
+                    var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
+                    if (saveSeparately)
+                    {
+                        ob.Deserialize(this, ctx);
+                        src = ob.RetrieveSource();
+                    }
+                    return ob;
+                }
+
+                src = new T?[ids.Length];
+                for (int i = 0; i < ids.Length; i++)
+                {
+                    src[i] = Read<T?>(ctx, ids[i], PathBuilder.Type.Collection);
+                }
+                var fullCol = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
+                if (saveSeparately)
+                {
+                    fullCol.Deserialize(this, ctx);
+                    src = fullCol.RetrieveSource();
+                }
+                return fullCol;
+            }
+            else
+            {
+                // TODO: lazy loading for arrays (Task 19)
+                var ids = metadata!.Ids;
+                src = new T?[ids!.Length];
+                for (int i = 0; i < ids.Length; i++)
+                {
+                    src[i] = Read<T?>(ctx, ids[i], PathBuilder.Type.Collection);
+                }
+                var fullCol = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
+                if (saveSeparately)
+                {
+                    fullCol.Deserialize(this, ctx);
+                    src = fullCol.RetrieveSource();
+                }
+                return fullCol;
+            }
         }
 
-        public ObservableListSavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T?>? src) where T : ISavable
+        public ObservableListSavable<T> LoadCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<T?>? src, LazyLoadConfig? config = null) where T : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
-            if (saveSeparately)
+
+            CollectionMetadata? metadata = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
             {
-                ob.Deserialize(this, ctx);
-                src = ob.RetrieveSource();
+                if (HasNoPushPath(ctx))
+                    metadata = ReadNoPushPath<CollectionMetadata?>(ctx);
             }
 
-            return ob;
+            if (metadata == null || !metadata.IsLazyLoaded || metadata.Count <= (config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold))
+            {
+                var ids = metadata?.Ids;
+                if (ids == null)
+                {
+                    src = null;
+                    var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
+                    if (saveSeparately)
+                    {
+                        ob.Deserialize(this, ctx);
+                        src = ob.RetrieveSource();
+                    }
+                    return ob;
+                }
+
+                src = new List<T?>(ids.Length);
+                foreach (var id in ids)
+                {
+                    src.Add(Read<T?>(ctx, id, PathBuilder.Type.Collection));
+                }
+                var fullCol = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
+                if (saveSeparately)
+                {
+                    fullCol.Deserialize(this, ctx);
+                    src = fullCol.RetrieveSource();
+                }
+                return fullCol;
+            }
+            else
+            {
+                int pageSize = config?.PageSize ?? (metadata.PageSize > 0 ? metadata.PageSize : GlobalConfig.DefaultPageSize);
+                int maxCached = config?.MaxCachedPages ?? (metadata.MaxCachedPages > 0 ? metadata.MaxCachedPages : GlobalConfig.DefaultMaxCachedPages);
+                var cacheStrategy = config?.CacheStrategy ?? metadata.CacheStrategy;
+
+                src = null;
+                var lazyCol = new ObservableLazyListSavable<T>(propName.ToString(), saveSeparately, pageSize, maxCached, cacheStrategy);
+                if (saveSeparately)
+                {
+                    lazyCol.Deserialize(this, ctx);
+                }
+
+                throw new NotSupportedException("Lazy loading returns ObservableLazyListSavable which cannot be cast to ObservableListSavable. Use LoadLazyCollectionSavable instead.");
+            }
+        }
+
+        public ObservableListSavableBase<ObservableLazyListSavable<T>, T> LoadLazyCollectionSavable<T>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, LazyLoadConfig? config = null) where T : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+
+            CollectionMetadata? metadata = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
+            {
+                if (HasNoPushPath(ctx))
+                    metadata = ReadNoPushPath<CollectionMetadata?>(ctx);
+            }
+
+            if (metadata == null || !metadata.IsLazyLoaded)
+            {
+                var ids = metadata?.Ids;
+                if (ids == null)
+                    throw new InvalidOperationException("No collection metadata found for lazy loading.");
+
+                var list = new List<T?>(ids.Length);
+                foreach (var id in ids)
+                {
+                    list.Add(Read<T?>(ctx, id, PathBuilder.Type.Collection));
+                }
+                var fullCol = new ObservableListSavable<T>(propName.ToString(), list, saveSeparately);
+                if (saveSeparately)
+                {
+                    fullCol.Deserialize(this, ctx);
+                }
+                throw new InvalidOperationException("Collection was not saved as lazy-loaded. Use LoadCollectionSavable instead.");
+            }
+
+            int pageSize = config?.PageSize ?? (metadata.PageSize > 0 ? metadata.PageSize : GlobalConfig.DefaultPageSize);
+            int maxCached = config?.MaxCachedPages ?? (metadata.MaxCachedPages > 0 ? metadata.MaxCachedPages : GlobalConfig.DefaultMaxCachedPages);
+            var cacheStrategy = config?.CacheStrategy ?? metadata.CacheStrategy;
+
+            var lazyCol = new ObservableLazyListSavable<T>(propName.ToString(), saveSeparately, pageSize, maxCached, cacheStrategy);
+            if (saveSeparately)
+            {
+                lazyCol.Deserialize(this, ctx);
+            }
+            return lazyCol;
         }
 
         public ObservableDictionarySavable<TKey, TValue?> LoadCollectionSavable<TKey, TValue>(SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src)
