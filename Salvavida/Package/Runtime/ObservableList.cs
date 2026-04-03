@@ -525,6 +525,9 @@ namespace Salvavida
             for (var i = 0; i < collection.Count; i++)
             {
                 var item = collection[i];
+                string? prevId = (index + i) > 0 ? _list[index + i - 1]?.SvId : null;
+                string? nextId = (index + i + 1) < _list.Count ? _list[index + i + 1]?.SvId : null;
+                item.SvId = LexoRank.Between(prevId, nextId);
                 OnItemSet(item, i + index);
             }
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));
