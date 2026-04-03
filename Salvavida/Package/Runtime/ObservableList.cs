@@ -403,14 +403,15 @@ namespace Salvavida
                 return;
             using var listScope = ctx.Path.UsePush(_svid!, PathBuilder.Type.Property);
             var ids = serializer.ListCollectionIds(ctx, _svid!);
-            _list = new List<T?>();
+            var list = new List<T?>();
             foreach (var id in ids)
             {
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
-                _list.Add(item);
+                list.Add(item);
                 OnChildDeserialized(item);
             }
             _idsDeleted.Clear();
+            SwapSource(list, false);
         }
 
         public override void SwapSource(List<T?>? list)
