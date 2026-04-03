@@ -365,13 +365,16 @@ namespace Salvavida.Generator
                 _ => throw new NotSupportedException(),
             };
             var isSavable = IsTypeISavable(typeSymbols[typeIndex]);
-            var savableStr = isSavable ? "Savable" : "";
 
             return colType switch
             {
-                CollectionType.Array => $"ObservableArray{savableStr}<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.List => $"ObservableList{savableStr}<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.Dictionary => $"ObservableDictionary{savableStr}<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                CollectionType.Array => isSavable
+                    ? $"ObservableArraySavableBase<ObservableArraySavable<{typeSymbols[0].ToDisplayString(format)}>, {typeSymbols[0].ToDisplayString(format)}>"
+                    : $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
+                CollectionType.List => isSavable
+                    ? $"ObservableListSavableBase<ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>, {typeSymbols[0].ToDisplayString(format)}>"
+                    : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
+                CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                 _ => throw new NotSupportedException()
             };
         }
