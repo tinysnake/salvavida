@@ -506,6 +506,12 @@ namespace Salvavida
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
+
+            string? prevId = index > 0 ? _list[index - 1]?.SvId : null;
+            string? nextId = index < _list.Count ? _list[index]?.SvId : null;
+
+            item.SvId = LexoRank.Between(prevId, nextId);
+
             _list.Insert(index, item);
             OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
