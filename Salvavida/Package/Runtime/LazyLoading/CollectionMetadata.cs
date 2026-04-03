@@ -37,5 +37,16 @@ namespace Salvavida
         /// Whether this collection uses lazy loading format.
         /// </summary>
         public bool IsLazyLoaded { get; set; }
+
+        /// <summary>
+        /// Bucket metadata table for LexoRank-based ordering.
+        /// </summary>
+        public BucketMeta[]? BucketMetas { get; set; }
+
+        /// <summary>
+        /// Multiplier for bucket size calculation: bucketSize = BucketMultiplier * PageSize.
+        /// Default is 3.
+        /// </summary>
+        public int BucketMultiplier { get; set; } = 3;
     }
 }
