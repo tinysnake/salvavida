@@ -107,20 +107,531 @@ namespace Salvavida
 
         #endregion
 
-        #region Abstract Method Implementations
+        #region Page Loading
 
-        public override T? this[int index] { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
-        public override void Add(T? item) => throw new NotImplementedException();
-        public override void Clear() => throw new NotImplementedException();
-        public override bool Contains(T? item) => throw new NotImplementedException();
-        public override int IndexOf(T? item) => throw new NotImplementedException();
-        public override void Insert(int index, T? item) => throw new NotImplementedException();
-        public override bool Remove(T? item) => throw new NotImplementedException();
-        public override void RemoveAt(int index) => throw new NotImplementedException();
-        public override void SwapSource(List<T?>? list) => throw new NotImplementedException();
-        public override void Serialize(Serializer serializer, SerializeContext ctx) => throw new NotImplementedException();
-        public override void Deserialize(Serializer serializer, SerializeContext ctx) => throw new NotImplementedException();
-        public override IEnumerator<T?> GetEnumerator() => throw new NotImplementedException();
+        private PageData GetOrLoadPage(int pageIndex)
+        {
+            if (_loadedPages.TryGetValue(pageIndex, out var page))
+                return page;
+
+            if (_cacheStrategy == CacheStrategy.LRU && _loadedPages.Count >= _maxCachedPages)
+                EvictLruPage();
+
+            page = LoadPageFromStorage(pageIndex);
+            _loadedPages[pageIndex] = page;
+            UpdateLru(pageIndex);
+
+            return page;
+        }
+
+        private PageData LoadPageFromStorage(int pageIndex)
+        {
+            var page = new PageData(_pageSize);
+
+            int startIdx = pageIndex * _pageSize;
+            int endIdx = Math.Min(startIdx + _pageSize, _totalElementCount);
+
+            for (int i = startIdx; i < endIdx; i++)
+            {
+                string id = _allIds[i];
+                page.Elements[i - startIdx] = _serializer!.Read<T?>(_context!, id, PathBuilder.Type.Collection);
+                var elem = page.Elements[i - startIdx];
+                if (elem != null)
+                {
+                    OnChildDeserialized(elem);
+                }
+            }
+
+            return page;
+        }
+
+        private void TouchPage(int pageIndex)
+        {
+            if (_cacheStrategy != CacheStrategy.LRU)
+                return;
+
+            _lruList.Remove(pageIndex);
+            _lruList.AddFirst(pageIndex);
+        }
+
+        private void UpdateLru(int pageIndex)
+        {
+            if (_cacheStrategy != CacheStrategy.LRU)
+                return;
+
+            _lruList.AddFirst(pageIndex);
+        }
+
+        private void EvictLruPage()
+        {
+            if (_lruList.Count == 0)
+                return;
+
+            int pageIndex = _lruList.Last.Value;
+            _lruList.RemoveLast();
+
+            if (_loadedPages.TryGetValue(pageIndex, out var page))
+            {
+                if (page.IsDirty)
+                    FlushPage(pageIndex, page);
+
+                foreach (var elem in page.Elements)
+                {
+                    TryUnWatch(elem);
+                }
+
+                _loadedPages.Remove(pageIndex);
+            }
+        }
+
+        private void FlushPage(int pageIndex, PageData page)
+        {
+            int startIdx = pageIndex * _pageSize;
+            int endIdx = Math.Min(startIdx + _pageSize, _totalElementCount);
+
+            for (int i = startIdx; i < endIdx; i++)
+            {
+                string id = _allIds[i];
+                var elem = page.Elements[i - startIdx];
+
+                if (elem == null)
+                {
+                    _serializer!.Delete(_context!, id, PathBuilder.Type.Collection);
+                }
+                else
+                {
+                    using (_context!.Path.UsePush(id, PathBuilder.Type.Collection))
+                    {
+                        elem.Serialize(_serializer!, _context!);
+                    }
+                }
+            }
+
+            page.IsDirty = false;
+        }
+
+        #endregion
+
+        #region Indexer
+
+        public override T? this[int index]
+        {
+            get
+            {
+                if (index < 0 || index >= _totalElementCount)
+                    throw new ArgumentOutOfRangeException(nameof(index));
+
+                _rwLock.EnterReadLock();
+                try
+                {
+                    var pageIndex = index / _pageSize;
+                    var localIndex = index % _pageSize;
+                    var page = GetOrLoadPage(pageIndex);
+                    TouchPage(pageIndex);
+                    return page.Elements[localIndex];
+                }
+                finally
+                {
+                    _rwLock.ExitReadLock();
+                }
+            }
+            set
+            {
+                if (index < 0 || index >= _totalElementCount)
+                    throw new ArgumentOutOfRangeException(nameof(index));
+
+                _rwLock.EnterWriteLock();
+                try
+                {
+                    var pageIndex = index / _pageSize;
+                    var localIndex = index % _pageSize;
+                    var page = GetOrLoadPage(pageIndex);
+
+                    var oldValue = page.Elements[localIndex];
+                    if (EqualityComparer<T?>.Default.Equals(oldValue, value))
+                        return;
+
+                    TryUnWatch(oldValue);
+                    page.Elements[localIndex] = value;
+                    page.IsDirty = true;
+                    _hasPendingWrites = true;
+                    TryWatch(value);
+
+                    OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Replace(this, oldValue, value, index));
+                }
+                finally
+                {
+                    _rwLock.ExitWriteLock();
+                }
+            }
+        }
+
+        #endregion
+
+        #region Add / Clear
+
+        public override void Add(T? item)
+        {
+            _rwLock.EnterWriteLock();
+            try
+            {
+                var pageIndex = _totalElementCount / _pageSize;
+                var localIndex = _totalElementCount % _pageSize;
+
+                var page = GetOrLoadPage(pageIndex);
+                page.Elements[localIndex] = item;
+                page.IsDirty = true;
+                _hasPendingWrites = true;
+
+                Array.Resize(ref _allIds, _totalElementCount + 1);
+                _allIds[_totalElementCount] = _totalElementCount.ToString();
+
+                _totalElementCount++;
+
+                OnItemSet(item, _totalElementCount - 1);
+                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Add(this, item, _totalElementCount - 1));
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        public override void Clear()
+        {
+            _rwLock.EnterWriteLock();
+            try
+            {
+                if (_serializer != null && _context != null)
+                {
+                    foreach (var id in _allIds)
+                    {
+                        _serializer.Delete(_context, id, PathBuilder.Type.Collection);
+                    }
+                }
+
+                foreach (var page in _loadedPages.Values)
+                {
+                    foreach (var elem in page.Elements)
+                    {
+                        TryUnWatch(elem);
+                    }
+                }
+
+                _loadedPages.Clear();
+                _lruList.Clear();
+                _allIds = Array.Empty<string>();
+                _totalElementCount = 0;
+                _hasPendingWrites = false;
+
+                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Reset(this));
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        private void OnItemSet(T? item, int index)
+        {
+            if (item is ISavable sv)
+                sv.SvId ??= DefaultIdGenerator.Default.GetId();
+            TryWatch(item);
+        }
+
+        #endregion
+
+        #region Insert / Remove
+
+        public override void Insert(int index, T? item)
+        {
+            if (index < 0 || index > _totalElementCount)
+                throw new ArgumentOutOfRangeException(nameof(index));
+
+            _rwLock.EnterWriteLock();
+            try
+            {
+                for (int i = index; i < _totalElementCount; i++)
+                {
+                    GetOrLoadPage(i / _pageSize);
+                }
+
+                for (int i = _totalElementCount - 1; i >= index; i--)
+                {
+                    var srcPageIdx = i / _pageSize;
+                    var srcLocalIdx = i % _pageSize;
+                    var dstPageIdx = (i + 1) / _pageSize;
+                    var dstLocalIdx = (i + 1) % _pageSize;
+
+                    var srcPage = _loadedPages[srcPageIdx];
+                    var dstPage = GetOrLoadPage(dstPageIdx);
+
+                    dstPage.Elements[dstLocalIdx] = srcPage.Elements[srcLocalIdx];
+                    dstPage.IsDirty = true;
+                }
+
+                var insertPage = GetOrLoadPage(index / _pageSize);
+                insertPage.Elements[index % _pageSize] = item;
+                insertPage.IsDirty = true;
+
+                Array.Resize(ref _allIds, _totalElementCount + 1);
+                Array.Copy(_allIds, index, _allIds, index + 1, _totalElementCount - index);
+                _allIds[index] = index.ToString();
+
+                _totalElementCount++;
+                _hasPendingWrites = true;
+
+                OnItemSet(item, index);
+                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Add(this, item, index));
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        public override void RemoveAt(int index)
+        {
+            if (index < 0 || index >= _totalElementCount)
+                throw new ArgumentOutOfRangeException(nameof(index));
+
+            _rwLock.EnterWriteLock();
+            try
+            {
+                for (int i = index; i < _totalElementCount; i++)
+                {
+                    GetOrLoadPage(i / _pageSize);
+                }
+
+                var oldItem = _loadedPages[index / _pageSize].Elements[index % _pageSize];
+                TryUnWatch(oldItem);
+
+                for (int i = index; i < _totalElementCount - 1; i++)
+                {
+                    var srcPageIdx = (i + 1) / _pageSize;
+                    var srcLocalIdx = (i + 1) % _pageSize;
+                    var dstPageIdx = i / _pageSize;
+                    var dstLocalIdx = i % _pageSize;
+
+                    var srcPage = _loadedPages[srcPageIdx];
+                    var dstPage = _loadedPages[dstPageIdx];
+
+                    dstPage.Elements[dstLocalIdx] = srcPage.Elements[srcLocalIdx];
+                    dstPage.IsDirty = true;
+                }
+
+                var lastPage = _loadedPages[(_totalElementCount - 1) / _pageSize];
+                lastPage.Elements[(_totalElementCount - 1) % _pageSize] = default;
+                lastPage.IsDirty = true;
+
+                Array.Copy(_allIds, index + 1, _allIds, index, _totalElementCount - index - 1);
+                Array.Resize(ref _allIds, _totalElementCount - 1);
+
+                _totalElementCount--;
+                _hasPendingWrites = true;
+
+                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Remove(this, oldItem, index));
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        public override bool Remove(T? item)
+        {
+            int index = IndexOf(item);
+            if (index < 0) return false;
+            RemoveAt(index);
+            return true;
+        }
+
+        #endregion
+
+        #region Contains / IndexOf / GetEnumerator
+
+        public override bool Contains(T? item)
+        {
+            return IndexOf(item) >= 0;
+        }
+
+        public override int IndexOf(T? item)
+        {
+            _rwLock.EnterReadLock();
+            try
+            {
+                foreach (var (pageIndex, page) in _loadedPages)
+                {
+                    int startIdx = pageIndex * _pageSize;
+                    int count = Math.Min(_pageSize, _totalElementCount - startIdx);
+
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (EqualityComparer<T?>.Default.Equals(page.Elements[i], item))
+                            return startIdx + i;
+                    }
+                }
+
+                for (int i = 0; i < _totalElementCount; i++)
+                {
+                    var pageIndex = i / _pageSize;
+                    if (!_loadedPages.ContainsKey(pageIndex))
+                    {
+                        var page = GetOrLoadPage(pageIndex);
+                        var localIndex = i % _pageSize;
+                        if (EqualityComparer<T?>.Default.Equals(page.Elements[localIndex], item))
+                            return i;
+                    }
+                }
+
+                return -1;
+            }
+            finally
+            {
+                _rwLock.ExitReadLock();
+            }
+        }
+
+        public override IEnumerator<T?> GetEnumerator()
+        {
+            for (int i = 0; i < _totalElementCount; i++)
+            {
+                yield return this[i];
+            }
+        }
+
+        #endregion
+
+        #region SwapSource
+
+        public override void SwapSource(List<T?>? list)
+        {
+            _rwLock.EnterWriteLock();
+            try
+            {
+                foreach (var page in _loadedPages.Values)
+                {
+                    foreach (var elem in page.Elements)
+                    {
+                        TryUnWatch(elem);
+                    }
+                }
+                _loadedPages.Clear();
+                _lruList.Clear();
+
+                if (list == null)
+                {
+                    _allIds = Array.Empty<string>();
+                    _totalElementCount = 0;
+                    _hasPendingWrites = false;
+                }
+                else
+                {
+                    _totalElementCount = list.Count;
+                    _allIds = new string[_totalElementCount];
+
+                    for (int i = 0; i < _totalElementCount; i++)
+                    {
+                        _allIds[i] = i.ToString();
+                        var item = list[i];
+                        TryWatch(item);
+                    }
+
+                    var firstPage = new PageData(_pageSize)
+                    {
+                        IsDirty = true
+                    };
+                    int copyCount = Math.Min(_pageSize, _totalElementCount);
+                    for (int i = 0; i < copyCount; i++)
+                    {
+                        firstPage.Elements[i] = list[i];
+                    }
+                    _loadedPages[0] = firstPage;
+                    _lruList.AddFirst(0);
+
+                    _hasPendingWrites = true;
+                }
+
+                _isDirty = true;
+                OnCollectionChange(CollectionChangeInfo<ObservableLazyListSavable<T>, T?>.Reset(this));
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        #endregion
+
+        #region Serialize / Deserialize
+
+        public override void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+
+            _rwLock.EnterWriteLock();
+            try
+            {
+                foreach (var (pageIndex, page) in _loadedPages)
+                {
+                    if (page.IsDirty)
+                        FlushPage(pageIndex, page);
+                }
+
+                var metadata = new CollectionMetadata
+                {
+                    Ids = _allIds,
+                    Count = _totalElementCount,
+                    PageSize = _pageSize,
+                    MaxCachedPages = _maxCachedPages,
+                    CacheStrategy = _cacheStrategy,
+                    IsLazyLoaded = true
+                };
+                serializer.Save(metadata, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+
+                _hasPendingWrites = false;
+                _isDirty = false;
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        public override void Deserialize(Serializer serializer, SerializeContext ctx)
+        {
+            if (!SaveSeparately)
+                return;
+
+            _rwLock.EnterWriteLock();
+            try
+            {
+                CollectionMetadata metadata;
+                using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
+                {
+                    metadata = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
+                }
+
+                _allIds = metadata.Ids ?? Array.Empty<string>();
+                _totalElementCount = metadata.Count;
+
+                _serializer = serializer;
+                _context = ctx;
+
+                _loadedPages.Clear();
+                _lruList.Clear();
+                _hasPendingWrites = false;
+            }
+            finally
+            {
+                _rwLock.ExitWriteLock();
+            }
+        }
+
+        #endregion
+
+        #region Child Changed
 
         protected override void OnChildChanged(T obj, string _)
         {
