@@ -532,6 +532,20 @@ namespace Salvavida
 
         protected abstract void DoDeleteAll(SerializeContext ctx);
 
+        /// <summary>
+        /// Get all ordered IDs under a collection path (lexicographic order = LexoRank order).
+        /// Implementation: scan all child keys under the collection path, exclude __ob_metadata__,
+        /// sort lexicographically, and return.
+        /// </summary>
+        public abstract IEnumerable<string> ListCollectionIds(SerializeContext ctx, string propName);
+
+        /// <summary>
+        /// Get a page of IDs starting from a specific bucket.
+        /// Implementation: scan keys matching {bucketId}~*, skip skipCount, collect pageSize.
+        /// </summary>
+        public abstract string[] ListCollectionIds(
+            SerializeContext ctx, string propName, string? bucketId, int skipCount, int pageSize);
+
         protected virtual void OnDeleteAllFailed(SerializeContext ctx, Exception ex)
         {
             throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
