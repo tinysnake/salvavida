@@ -265,7 +265,7 @@ namespace Salvavida
         }
     }
 
-    public sealed class ObservableListSavable<T> : ObservableCollectionSavable<ObservableListSavable<T>, T>, IList<T?>, IReadOnlyList<T?>, IList, ICollectionWrapper<List<T?>>
+    public sealed class ObservableListSavable<T> : ObservableListSavableBase<ObservableListSavable<T>, T>, ICollectionWrapper<List<T?>>
         where T : ISavable
     {
         public ObservableListSavable(string propName, List<T?>? src, bool saveSeparately)
@@ -299,7 +299,7 @@ namespace Salvavida
             }
         }
 
-        public T? this[int index]
+        public override T? this[int index]
         {
             get => _list == null ? throw new NullReferenceException(nameof(_list)) : _list[index];
             set
@@ -316,21 +316,7 @@ namespace Salvavida
             }
         }
 
-        object? IList.this[int index] { get => this[index]; set => this[index] = (T?)value; }
-
-        public int Count => _list?.Count ?? 0;
-
-        bool IList.IsFixedSize => false;
-
-        int ICollection.Count => _list?.Count ?? 0;
-
-        bool ICollection<T?>.IsReadOnly => false;
-
-        bool IList.IsReadOnly => false;
-
-        bool ICollection.IsSynchronized => ((ICollection?)_list)?.IsSynchronized ?? false;
-
-        object? ICollection.SyncRoot => ((ICollection?)_list)?.SyncRoot ?? null;
+        public override int Count => _list?.Count ?? 0;
 
         public List<T?>? RetrieveSource() => _list;
 
@@ -425,7 +411,7 @@ namespace Salvavida
             SwapSource(list, false);
         }
 
-        public void SwapSource(List<T?>? list)
+        public override void SwapSource(List<T?>? list)
         {
             _isDirty = true;
             SwapSource(list, true);
@@ -472,7 +458,7 @@ namespace Salvavida
             return CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, _list, 0);
         }
 
-        public void Add(T? item)
+        public override void Add(T? item)
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
@@ -480,12 +466,6 @@ namespace Salvavida
             _list.Add(item);
             OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, item, index));
-        }
-
-        int IList.Add(object value)
-        {
-            Add((T?)value);
-            return Count - 1;
         }
 
         public void AddRange(IList<T?> collection)
@@ -511,7 +491,7 @@ namespace Salvavida
             TryWatch(item);
         }
 
-        public void Clear()
+        public override void Clear()
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
@@ -523,27 +503,15 @@ namespace Salvavida
             _list.Clear();
         }
 
-        void IList.Clear() => Clear();
+        public override bool Contains(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.Contains(item);
 
-        public bool Contains(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.Contains(item);
+        public List<T?>.Enumerator GetEnumeratorStruct() => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.GetEnumerator();
 
-        bool IList.Contains(object value) => Contains((T?)value);
+        public override IEnumerator<T?> GetEnumerator() => GetEnumeratorStruct();
 
-        public void CopyTo(T?[] array, int arrayIndex) => _list?.CopyTo(array, arrayIndex);
+        public override int IndexOf(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.IndexOf(item);
 
-        void ICollection.CopyTo(Array array, int index) => ((ICollection?)_list)?.CopyTo(array, index);
-
-        public List<T?>.Enumerator GetEnumerator() => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.GetEnumerator();
-
-        IEnumerator<T?> IEnumerable<T?>.GetEnumerator() => GetEnumerator();
-
-        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-        public int IndexOf(T? item) => _list == null ? throw new NullReferenceException(nameof(_list)) : _list.IndexOf(item);
-
-        int IList.IndexOf(object value) => IndexOf((T?)value);
-
-        public void Insert(int index, T? item)
+        public override void Insert(int index, T? item)
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
@@ -551,8 +519,6 @@ namespace Salvavida
             OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, item, index));
         }
-
-        void IList.Insert(int index, object value) => Insert(index, (T?)value);
 
         public void InsertRange(int index, IList<T?> collection)
         {
@@ -567,7 +533,7 @@ namespace Salvavida
             OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Add(this, collection, index));
         }
 
-        public bool Remove(T? item)
+        public override bool Remove(T? item)
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
@@ -581,8 +547,6 @@ namespace Salvavida
             }
             return false;
         }
-
-        void IList.Remove(object value) => Remove((T?)value);
 
         public void RemoveRange(int index, int count)
         {
@@ -598,7 +562,7 @@ namespace Salvavida
             _list.RemoveRange(index, count);
         }
 
-        public void RemoveAt(int index)
+        public override void RemoveAt(int index)
         {
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
@@ -607,8 +571,6 @@ namespace Salvavida
             OnCollectionChange(CollectionChangeInfo<ObservableListSavable<T>, T?>.Remove(this, item, index));
             TryUnWatch(item);
         }
-
-        void IList.RemoveAt(int index) => RemoveAt(index);
 
         public void Move(int oldIndex, int newIndex)
         {
