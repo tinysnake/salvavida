@@ -18,8 +18,13 @@ namespace Salvavida.Generator.Debug
     {
         [SerializeField]
         private string _field2;
+
+        public void Save()
+        {
+
+        }
     }
-    
+
     [Savable]
     [MemoryPackable]
     public partial class MemPacker

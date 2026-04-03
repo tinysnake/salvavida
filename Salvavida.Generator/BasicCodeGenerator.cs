@@ -268,10 +268,11 @@ namespace Salvavida.Generator
 
                 _infoStore!.savableMembers.Add(propertyName);
                 var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols);
+                var concreteTypeString = GetCollectionConcreteTypeString(collectionType, elemTypeSymbols);
                 var elemTypeString = elemTypeSymbols.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                 var isSavable = IsTypeISavable(elemTypeSymbols.Last());
                 WriteCollectionProperty(sb, ctx, propertyName, fieldName,
-                    typeSymbol, collectionTypeString, elemTypeString, saveSeparately, isSavable, lazyLoadAttr);
+                    typeSymbol, collectionTypeString, concreteTypeString, elemTypeString, saveSeparately, isSavable, lazyLoadAttr);
             }
         }
 
@@ -320,7 +321,7 @@ namespace Salvavida.Generator
         }
 
         protected virtual void WriteCollectionProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName,
-            ITypeSymbol typeSymbol, string collectionTypeString, string elemTypeString, bool saveSeparately, bool isSavable, AttributeData? lazyLoadAttr)
+            ITypeSymbol typeSymbol, string collectionTypeString, string concreteTypeString, string elemTypeString, bool saveSeparately, bool isSavable, AttributeData? lazyLoadAttr)
         {
             if (lazyLoadAttr != null && isSavable)
             {
@@ -380,7 +381,7 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine($"if ({fieldName}Ob != null)");
                 sb.WriteLine("    return;");
-                sb.WriteLine($"{fieldName}Ob = new {collectionTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
+                sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
                 sb.WriteLine($"WatchCollection<{collectionTypeString}, {elemTypeString}>({fieldName}Ob);");
             }
 
@@ -405,6 +406,30 @@ namespace Salvavida.Generator
                     : $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
                 CollectionType.List => isSavable
                     ? $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>"
+                    : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
+                CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                _ => throw new NotSupportedException()
+            };
+        }
+
+        protected string GetCollectionConcreteTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols)
+        {
+            var format = SymbolDisplayFormat.FullyQualifiedFormat;
+            var typeIndex = colType switch
+            {
+                CollectionType.Array or CollectionType.List => 0,
+                CollectionType.Dictionary => 1,
+                _ => throw new NotSupportedException(),
+            };
+            var isSavable = IsTypeISavable(typeSymbols[typeIndex]);
+
+            return colType switch
+            {
+                CollectionType.Array => isSavable
+                    ? $"ObservableArraySavable<{typeSymbols[0].ToDisplayString(format)}>"
+                    : $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
+                CollectionType.List => isSavable
+                    ? $"ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>"
                     : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
                 CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                 _ => throw new NotSupportedException()

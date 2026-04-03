@@ -45,8 +45,15 @@ namespace Salvavida.Generator.Debug
 
         public bool IsDirty { get; private set; }
 
+        public bool IsSelfDirty { get; private set; }
+
         public void AfterDeserialize(Serializer serializer, SerializeContext path)
         {
+        }
+
+        public void Save()
+        {
+
         }
 
         public void AfterSerialize(Serializer serializer, SerializeContext path)
@@ -55,22 +62,6 @@ namespace Salvavida.Generator.Debug
 
         public void BeforeSerialize(Serializer serializer)
         {
-        }
-
-        public void Invalidate(bool recursively)
-        {
-            SetDirty(true, recursively);
-            var serializer = this.GetSerializer();
-            if (serializer == null)
-                return;
-
-            if (string.IsNullOrEmpty(SvId))
-                throw new ArgumentNullException(nameof(SvId));
-
-            if (this is ISerializeRoot root)
-                serializer.FreshSaveByPolicy(this);
-            else
-                PropertyChanged?.Invoke(this, SvId);
         }
 
         public void SetDirty(bool dirty, bool recursively)
@@ -85,6 +76,11 @@ namespace Salvavida.Generator.Debug
         public void SetParent(ISavable parent)
         {
             SvParent = parent;
+        }
+
+        public void Serialize(Serializer serializer, SerializeContext ctx)
+        {
+
         }
     }
 
