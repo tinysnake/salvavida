@@ -621,6 +621,208 @@ namespace Salvavida
 
         #region Serialize / Deserialize
 
+        private string GetNextBucketPrefix()
+        {
+            if (_bucketMetas.Length == 0)
+                return "B";
+
+            string lastPrefix = _bucketMetas[_bucketMetas.Length - 1].BucketId;
+            return IncrementBase62(lastPrefix);
+        }
+
+        private string IncrementBase62(string value)
+        {
+            var chars = value.ToCharArray();
+            for (int i = chars.Length - 1; i >= 0; i--)
+            {
+                int idx = Array.IndexOf(LexoRank.CHARSET.ToCharArray(), chars[i]);
+                if (idx < LexoRank.CHARSET.Length - 1)
+                {
+                    chars[i] = LexoRank.CHARSET[idx + 1];
+                    return new string(chars);
+                }
+                chars[i] = LexoRank.CHARSET[0];
+            }
+            return LexoRank.CHARSET[1] + new string(chars);
+        }
+
+        private int[] RecomputeCumulativeIndex()
+        {
+            var index = new int[_bucketMetas.Length];
+            int cumulative = 0;
+            for (int i = 0; i < _bucketMetas.Length; i++)
+            {
+                cumulative += _bucketMetas[i].Count;
+                index[i] = cumulative;
+            }
+            return index;
+        }
+
+        private void PerformBucketSplit(Serializer serializer, SerializeContext ctx)
+        {
+            for (int i = 0; i < _bucketMetas.Length; i++)
+            {
+                int bucketSize = _bucketMultiplier * _pageSize;
+                if (_bucketMetas[i].Count > bucketSize)
+                {
+                    int startIdx = i > 0 ? _bucketCumulativeIndex[i - 1] : 0;
+                    int endIdx = _bucketCumulativeIndex[i];
+                    int midIdx = startIdx + (endIdx - startIdx) / 2;
+                    string newPrefix = GetNextBucketPrefix();
+
+                    var firstHalfRanks = LexoRank.Rebalance(midIdx - startIdx);
+                    for (int j = startIdx; j < midIdx; j++)
+                    {
+                        var page = GetOrLoadPage(j / _pageSize);
+                        var elem = page.Elements[j % _pageSize];
+                        if (elem != null)
+                        {
+                            elem.SvId = _bucketMetas[i].BucketId + "~" + firstHalfRanks[j - startIdx];
+                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        }
+                    }
+
+                    var secondHalfRanks = LexoRank.Rebalance(endIdx - midIdx);
+                    for (int j = midIdx; j < endIdx; j++)
+                    {
+                        var page = GetOrLoadPage(j / _pageSize);
+                        var elem = page.Elements[j % _pageSize];
+                        if (elem != null)
+                        {
+                            elem.SvId = newPrefix + "~" + secondHalfRanks[j - midIdx];
+                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        }
+                    }
+
+                    var newMetas = new BucketMeta[_bucketMetas.Length + 1];
+                    int ni = 0;
+                    for (int mi = 0; mi < _bucketMetas.Length; mi++)
+                    {
+                        if (mi == i)
+                        {
+                            newMetas[ni++] = new BucketMeta { BucketId = _bucketMetas[mi].BucketId, Count = midIdx - startIdx };
+                            newMetas[ni++] = new BucketMeta { BucketId = newPrefix, Count = endIdx - midIdx };
+                        }
+                        else
+                        {
+                            newMetas[ni++] = _bucketMetas[mi];
+                        }
+                    }
+                    _bucketMetas = newMetas;
+                    _bucketCumulativeIndex = RecomputeCumulativeIndex();
+                    break;
+                }
+            }
+            _needsBucketSplit = false;
+        }
+
+        private void PerformBucketMerge(Serializer serializer, SerializeContext ctx)
+        {
+            for (int i = 0; i < _bucketMetas.Length - 1; i++)
+            {
+                int bucketSize = _bucketMultiplier * _pageSize;
+                int threshold = bucketSize / 4;
+                if (_bucketMetas[i].Count < threshold || _bucketMetas[i + 1].Count < threshold)
+                {
+                    int startIdx = i > 0 ? _bucketCumulativeIndex[i - 1] : 0;
+                    int endIdx = _bucketCumulativeIndex[i + 1];
+                    string mergePrefix = _bucketMetas[i].BucketId;
+
+                    var newRanks = LexoRank.Rebalance(endIdx - startIdx);
+                    for (int j = startIdx; j < endIdx; j++)
+                    {
+                        var page = GetOrLoadPage(j / _pageSize);
+                        var elem = page.Elements[j % _pageSize];
+                        if (elem != null)
+                        {
+                            elem.SvId = mergePrefix + "~" + newRanks[j - startIdx];
+                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        }
+                    }
+
+                    var newMetas = new BucketMeta[_bucketMetas.Length - 1];
+                    int ni = 0;
+                    for (int mi = 0; mi < _bucketMetas.Length; mi++)
+                    {
+                        if (mi == i)
+                        {
+                            newMetas[ni++] = new BucketMeta { BucketId = mergePrefix, Count = endIdx - startIdx };
+                        }
+                        else if (mi != i + 1)
+                        {
+                            newMetas[ni++] = _bucketMetas[mi];
+                        }
+                    }
+                    _bucketMetas = newMetas;
+                    _bucketCumulativeIndex = RecomputeCumulativeIndex();
+                    break;
+                }
+            }
+            _needsBucketMerge = false;
+        }
+
+        private void PerformRebalance(Serializer serializer, SerializeContext ctx)
+        {
+            if (_bucketMetas.Length == 0)
+            {
+                var newRanks = LexoRank.Rebalance(_totalElementCount);
+                for (int i = 0; i < _totalElementCount; i++)
+                {
+                    var page = GetOrLoadPage(i / _pageSize);
+                    var elem = page.Elements[i % _pageSize];
+                    if (elem != null)
+                    {
+                        elem.SvId = LexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
+                        serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < _bucketMetas.Length; i++)
+                {
+                    int startIdx = i > 0 ? _bucketCumulativeIndex[i - 1] : 0;
+                    int count = _bucketMetas[i].Count;
+                    var newRanks = LexoRank.Rebalance(count);
+                    for (int j = startIdx; j < startIdx + count; j++)
+                    {
+                        var page = GetOrLoadPage(j / _pageSize);
+                        var elem = page.Elements[j % _pageSize];
+                        if (elem != null)
+                        {
+                            elem.SvId = _bucketMetas[i].BucketId + "~" + newRanks[j - startIdx];
+                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        }
+                    }
+                }
+            }
+            _needsRebalance = false;
+        }
+
+        private void FlushDirtyPages(Serializer serializer, SerializeContext ctx)
+        {
+            foreach (var (pageIndex, page) in _loadedPages)
+            {
+                if (page.IsDirty)
+                    FlushPage(pageIndex, page);
+            }
+        }
+
+        private void SaveCollectionMetadata(Serializer serializer, SerializeContext ctx)
+        {
+            var metadata = new CollectionMetadata
+            {
+                Count = _totalElementCount,
+                PageSize = _pageSize,
+                MaxCachedPages = _maxCachedPages,
+                CacheStrategy = _cacheStrategy,
+                IsLazyLoaded = true,
+                BucketMetas = _bucketMetas.Length > 0 ? _bucketMetas : null,
+                BucketMultiplier = _bucketMultiplier
+            };
+            serializer.Save(metadata, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+        }
+
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
@@ -629,22 +831,30 @@ namespace Salvavida
             _rwLock.EnterWriteLock();
             try
             {
-                foreach (var (pageIndex, page) in _loadedPages)
+                if (_needsBucketSplit)
                 {
-                    if (page.IsDirty)
-                        FlushPage(pageIndex, page);
+                    PerformBucketSplit(serializer, ctx);
                 }
 
-                var metadata = new CollectionMetadata
+                if (_needsBucketMerge)
                 {
-                    Ids = _allIds,
-                    Count = _totalElementCount,
-                    PageSize = _pageSize,
-                    MaxCachedPages = _maxCachedPages,
-                    CacheStrategy = _cacheStrategy,
-                    IsLazyLoaded = true
-                };
-                serializer.Save(metadata, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                    PerformBucketMerge(serializer, ctx);
+                }
+
+                if (_needsRebalance)
+                {
+                    PerformRebalance(serializer, ctx);
+                }
+
+                FlushDirtyPages(serializer, ctx);
+
+                foreach (var deletedId in _idsDeleted)
+                {
+                    serializer.Delete(ctx, deletedId, PathBuilder.Type.Collection);
+                }
+                _idsDeleted.Clear();
+
+                SaveCollectionMetadata(serializer, ctx);
 
                 _hasPendingWrites = false;
                 _isDirty = false;
