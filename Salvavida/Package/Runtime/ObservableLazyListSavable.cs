@@ -635,6 +635,7 @@ namespace Salvavida
                 }
 
                 _totalElementCount = metadata.Count;
+                _allIds = metadata.Ids ?? Array.Empty<string>();
                 _idsDeleted = new HashSet<string>();
 
                 // Build cumulative bucket index
