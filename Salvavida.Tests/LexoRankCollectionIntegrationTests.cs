@@ -1,8 +1,6 @@
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
 
 namespace Salvavida.Tests
 {
@@ -13,7 +11,7 @@ namespace Salvavida.Tests
         [Test]
         public void Between_AlwaysProducesValidRank()
         {
-            var ranks = new List<string> { "A~a", "A~m", "A~z", "B~a", "B~z" };
+            var ranks = new List<string> { "V~a", "V~m", "V~z", "B~a", "B~z" };
             foreach (var prev in ranks)
             {
                 foreach (var next in ranks)
@@ -24,7 +22,7 @@ namespace Salvavida.Tests
                     var result = LexoRank.Between(prev, next);
                     Assert.That(result, Is.GreaterThan(prev).Using<string>(StringComparer.Ordinal));
                     Assert.That(result, Is.LessThan(next).Using<string>(StringComparer.Ordinal));
-                    Assert.That(result, Does.Contain("~"));
+                    Assert.That(result, Does.Contain(LexoRank.SEPARATOR));
                 }
             }
         }
@@ -70,7 +68,7 @@ namespace Salvavida.Tests
         public void RapidInsertsAtBeginning_ProducesOrderedRanks()
         {
             var ranks = new List<string>();
-            for (int i = 0; i < 50; i++)
+            for (int i = 0; i < 100; i++)
             {
                 string? next = ranks.Count > 0 ? ranks[0] : null;
                 ranks.Insert(0, LexoRank.Between(null, next));
@@ -84,14 +82,53 @@ namespace Salvavida.Tests
         [Test]
         public void RapidInsertsAtEnd_ProducesOrderedRanks()
         {
-            // Simulate inserting 100 items at the end
             var ranks = new List<string>();
             for (int i = 0; i < 100; i++)
             {
                 string? prev = ranks.Count > 0 ? ranks[ranks.Count - 1] : null;
                 ranks.Add(LexoRank.Between(prev, null));
             }
-            // Verify ordering
+            for (int i = 1; i < ranks.Count; i++)
+            {
+                Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));
+            }
+        }
+
+        [Test]
+        public void RapidInsertsInMiddle_ProducesOrderedRanks()
+        {
+            var ranks = new List<string>();
+            ranks.Add(LexoRank.Between(null, null));
+            ranks.Add(LexoRank.Between(ranks[0], null));
+
+            for (int i = 0; i < 100; i++)
+            {
+                int midIdx = ranks.Count / 2;
+                string prev = ranks[midIdx - 1];
+                string next = ranks[midIdx];
+                ranks.Insert(midIdx, LexoRank.Between(prev, next));
+            }
+
+            for (int i = 1; i < ranks.Count; i++)
+            {
+                Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));
+            }
+        }
+
+        [Test]
+        public void RandomInsert_ProducesOrderedRanks()
+        {
+            var ranks = new List<string> { LexoRank.Between(null, null) };
+            var rng = new Random(42);
+
+            for (int i = 0; i < 100; i++)
+            {
+                int idx = rng.Next(0, ranks.Count + 1);
+                string? prev = idx > 0 ? ranks[idx - 1] : null;
+                string? next = idx < ranks.Count ? ranks[idx] : null;
+                ranks.Insert(idx, LexoRank.Between(prev, next));
+            }
+
             for (int i = 1; i < ranks.Count; i++)
             {
                 Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));

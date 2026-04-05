@@ -5,33 +5,58 @@ namespace Salvavida.Tests
     public class LexoRankTests
     {
         [Test]
-        public void Between_NullNull_ReturnsInitialRank()
+        public void Between_NullNull_DefaultBucketSize_ReturnsComputedInitialRank()
         {
             var result = LexoRank.Between(null, null);
-            Assert.That(result, Is.EqualTo("A~m"));
+            Assert.That(result, Does.Contain(LexoRank.SEPARATOR));
+            Assert.That(result, Does.StartWith(LexoRank.DEFAULT_PREFIX + LexoRank.SEPARATOR));
+            var lexoPart = result.Split(LexoRank.SEPARATOR)[1];
+            Assert.That(lexoPart.Length, Is.EqualTo(2)); // bucketSize=100 needs 2 chars (62^2=3844)
+        }
+
+        [Test]
+        public void Between_NullNull_LargeBucketSize_ReturnsLongerRank()
+        {
+            var result = LexoRank.Between(null, null, 5000);
+            var lexoPart = result.Split(LexoRank.SEPARATOR)[1];
+            Assert.That(lexoPart.Length, Is.EqualTo(3)); // 62^2=3844 < 5000, needs 3 chars
         }
 
         [Test]
         public void Between_SameBucket_ReturnsMidpoint()
         {
-            var result = LexoRank.Between("A~a", "A~z");
-            Assert.That(result, Does.StartWith("A~"));
-            Assert.That(result, Is.GreaterThan("A~a").Using<string>(StringComparer.Ordinal));
-            Assert.That(result, Is.LessThan("A~z").Using<string>(StringComparer.Ordinal));
+            var result = LexoRank.Between("V~a", "V~z");
+            Assert.That(result, Does.StartWith("V~"));
+            Assert.That(result, Is.GreaterThan("V~a").Using<string>(StringComparer.Ordinal));
+            Assert.That(result, Is.LessThan("V~z").Using<string>(StringComparer.Ordinal));
         }
 
         [Test]
-        public void Between_CrossBucket_AppendsToPrev()
+        public void Between_CrossBucket_ReturnsValueBetween()
         {
-            var result = LexoRank.Between("A~z", "B~a");
-            Assert.That(result, Is.EqualTo("A~z0"));
+            var result = LexoRank.Between("V~z", "W~a");
+            Assert.That(result, Is.GreaterThan("V~z").Using<string>(StringComparer.Ordinal));
+            Assert.That(result, Is.LessThan("W~a").Using<string>(StringComparer.Ordinal));
+            Assert.That(result, Does.StartWith("V~"));
         }
 
         [Test]
-        public void Between_PrecisionExpansion_AppendsMinimumChar()
+        public void Between_AdjacentChars_AppendsMiddleChar()
+        {
+            var result = LexoRank.Between("V~V", "V~W");
+            Assert.That(result, Is.GreaterThan("V~V").Using<string>(StringComparer.Ordinal));
+            Assert.That(result, Is.LessThan("V~W").Using<string>(StringComparer.Ordinal));
+            // 当 diffIdx 位置的字符相邻时，在后续位置找中间值
+            // "V" vs "W" 相邻，检查下一位置：prevLexo 补位 '0' vs 'z'
+            // midVal = (0 + 61) / 2 = 30 = 'U'
+            Assert.That(result, Is.EqualTo("V~VU"));
+        }
+
+        [Test]
+        public void Between_PrecisionExpansion_ReturnsValidRank()
         {
             var result = LexoRank.Between("A~a", "A~b");
-            Assert.That(result, Does.StartWith("A~a"));
+            Assert.That(result, Does.StartWith("A~"));
             Assert.That(result.Length, Is.GreaterThan(3));
             Assert.That(result, Is.GreaterThan("A~a").Using<string>(StringComparer.Ordinal));
             Assert.That(result, Is.LessThan("A~b").Using<string>(StringComparer.Ordinal));
@@ -40,21 +65,29 @@ namespace Salvavida.Tests
         [Test]
         public void Between_EqualNonNull_ThrowsArgumentException()
         {
-            Assert.Throws<ArgumentException>(() => LexoRank.Between("A~abc", "A~abc"));
+            Assert.Throws<ArgumentException>(() => LexoRank.Between("V~abc", "V~abc"));
         }
 
         [Test]
-        public void Between_InsertAtBeginning()
+        public void Between_InsertAtBeginning_ReturnsLessThanNext()
         {
-            var result = LexoRank.Between(null, "A~m");
-            Assert.That(result, Is.LessThan("A~m").Using<string>(StringComparer.Ordinal));
+            var result = LexoRank.Between(null, "V~VV");
+            Assert.That(result, Is.LessThan("V~VV").Using<string>(StringComparer.Ordinal));
         }
 
         [Test]
-        public void Between_InsertAtEnd()
+        public void Between_InsertAtEnd_ReturnsGreaterThanPrev()
         {
-            var result = LexoRank.Between("A~m", null);
-            Assert.That(result, Is.GreaterThan("A~m").Using<string>(StringComparer.Ordinal));
+            var result = LexoRank.Between("V~VV", null);
+            Assert.That(result, Is.GreaterThan("V~VV").Using<string>(StringComparer.Ordinal));
+        }
+
+        [Test]
+        public void Between_PrevIsPrefixOfNext_ReturnsValidRank()
+        {
+            var result = LexoRank.Between("V~a", "V~a1");
+            Assert.That(result, Is.GreaterThan("V~a").Using<string>(StringComparer.Ordinal));
+            Assert.That(result, Is.LessThan("V~a1").Using<string>(StringComparer.Ordinal));
         }
 
         [Test]
@@ -103,9 +136,21 @@ namespace Salvavida.Tests
         [Test]
         public void Compare_MatchesStringCompareOrdinal()
         {
-            Assert.That(LexoRank.Compare("A~a", "A~b"), Is.EqualTo(string.CompareOrdinal("A~a", "A~b")));
-            Assert.That(LexoRank.Compare("A~z", "B~a"), Is.EqualTo(string.CompareOrdinal("A~z", "B~a")));
-            Assert.That(LexoRank.Compare("A~m", "A~m"), Is.EqualTo(0));
+            Assert.That(LexoRank.Compare("V~a", "V~b"), Is.EqualTo(string.CompareOrdinal("V~a", "V~b")));
+            Assert.That(LexoRank.Compare("V~z", "B~a"), Is.EqualTo(string.CompareOrdinal("V~z", "B~a")));
+            Assert.That(LexoRank.Compare("V~V", "V~V"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Constants_Separator_IsTilde()
+        {
+            Assert.That(LexoRank.SEPARATOR, Is.EqualTo("~"));
+        }
+
+        [Test]
+        public void Constants_DefaultBucketSize_Is100()
+        {
+            Assert.That(LexoRank.DEFAULT_BUCKET_SIZE, Is.EqualTo(100));
         }
     }
 }

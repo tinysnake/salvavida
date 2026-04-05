@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Salvavida.Generator.Debug",
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Salvavida", "Salvavida\Salvavida.csproj", "{71C435AD-F86D-4699-8099-8409B5990725}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Salvavida.Tests", "Salvavida.Tests\Salvavida.Tests.csproj", "{1A5F8C76-6FD4-4290-918B-2D966AF6588E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,10 @@ Global
 		{71C435AD-F86D-4699-8099-8409B5990725}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{71C435AD-F86D-4699-8099-8409B5990725}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{71C435AD-F86D-4699-8099-8409B5990725}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A5F8C76-6FD4-4290-918B-2D966AF6588E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A5F8C76-6FD4-4290-918B-2D966AF6588E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A5F8C76-6FD4-4290-918B-2D966AF6588E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A5F8C76-6FD4-4290-918B-2D966AF6588E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

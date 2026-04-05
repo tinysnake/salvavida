@@ -523,10 +523,13 @@ namespace Salvavida
             string? prevId = index > 0 ? _list[index - 1]?.SvId : null;
             string? nextId = index < _list.Count ? _list[index]?.SvId : null;
 
-            item.SvId = LexoRank.Between(prevId, nextId);
+            Span<char> rankBuffer = stackalloc char[128];
+            int rankLen = LexoRank.BetweenSpan(prevId, nextId, rankBuffer);
+            item.SvId = new string(rankBuffer.Slice(0, rankLen));
 
-            var rankParts = item.SvId.Split('~');
-            if (rankParts.Length == 2 && rankParts[1].Length > LexoRank.REBALANCE_LENGTH_THRESHOLD)
+            var lexoPart = item.SvId.AsSpan();
+            int sepIdx = lexoPart.IndexOf('~');
+            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > LexoRank.REBALANCE_LENGTH_THRESHOLD)
                 _needsRebalance = true;
 
             _list.Insert(index, item);
@@ -539,12 +542,14 @@ namespace Salvavida
             if (_list == null)
                 throw new NullReferenceException(nameof(_list));
             _list.InsertRange(index, collection);
+            Span<char> rankBuffer = stackalloc char[128];
             for (var i = 0; i < collection.Count; i++)
             {
                 var item = collection[i];
                 string? prevId = (index + i) > 0 ? _list[index + i - 1]?.SvId : null;
                 string? nextId = (index + i + 1) < _list.Count ? _list[index + i + 1]?.SvId : null;
-                item.SvId = LexoRank.Between(prevId, nextId);
+                int rankLen = LexoRank.BetweenSpan(prevId, nextId, rankBuffer);
+                item.SvId = new string(rankBuffer.Slice(0, rankLen));
                 OnItemSet(item, i + index);
             }
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));

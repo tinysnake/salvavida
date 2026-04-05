@@ -1,316 +1,370 @@
 using System;
-using System.Buffers;
+using System.Runtime.CompilerServices;
 
 namespace Salvavida
 {
     public static class LexoRank
     {
-        // Base62 charset: 0-9 (48-57), A-Z (65-90), a-z (97-122) in ASCII order
         public const string CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        public const string SEPARATOR = "~";
+        public const int DEFAULT_BUCKET_SIZE = 100;
         public const int REBALANCE_LENGTH_THRESHOLD = 4;
-        public const string DEFAULT_PREFIX = "A";
-        public const string INITIAL_RANK = DEFAULT_PREFIX + "~m";
 
-        // Precomputed charset index lookup for O(1) decode (avoids string.IndexOf per char)
-        private static readonly byte[] s_charsetIndex = BuildCharsetIndex();
+        private const int MAX_RESULT_LENGTH = 256;
+        private static readonly int MIDDLE_INDEX = CHARSET.Length / 2; // 31
+        private static readonly char MIDDLE_CHAR = CHARSET[MIDDLE_INDEX]; // 'V'
+        public static readonly string DEFAULT_PREFIX = MIDDLE_CHAR.ToString(); // "V"
 
-        private static byte[] BuildCharsetIndex()
+        private static readonly byte[] CharToIndexTable = CreateLookupTable();
+
+        // Thread-local buffer for Between() to reuse
+        [ThreadStatic] private static char[]? t_buffer;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Span<char> GetThreadBuffer()
         {
-            var map = new byte[128]; // ASCII range
-            for (byte i = 0; i < CHARSET.Length; i++)
-                map[CHARSET[i]] = i;
-            return map;
+            var buf = t_buffer;
+            if (buf == null)
+                t_buffer = buf = new char[MAX_RESULT_LENGTH];
+            return buf.AsSpan();
         }
 
-        public static string Between(string? prev, string? next)
+        private static byte[] CreateLookupTable()
+        {
+            var table = new byte[128];
+            for (int i = 0; i < CHARSET.Length; i++)
+            {
+                table[CHARSET[i]] = (byte)i;
+            }
+            return table;
+        }
+
+        /// <summary>
+        /// Computes a rank string between prev and next.
+        /// </summary>
+        public static string Between(string? prev, string? next, int bucketSize = DEFAULT_BUCKET_SIZE)
+        {
+            var buffer = GetThreadBuffer();
+            int len = BetweenSpanCore(prev, next, buffer, bucketSize);
+            return new string(buffer[..len]);
+        }
+
+        /// <summary>
+        /// High-performance version that writes result to destination buffer.
+        /// </summary>
+        /// <param name="prev">Previous rank (can be null)</param>
+        /// <param name="next">Next rank (can be null)</param>
+        /// <param name="destination">Buffer to write result to</param>
+        /// <param name="bucketSize">Expected number of insertions</param>
+        /// <returns>Number of characters written to destination</returns>
+        public static int BetweenSpan(string? prev, string? next, Span<char> destination, int bucketSize = DEFAULT_BUCKET_SIZE)
+        {
+            return BetweenSpanCore(prev, next, destination, bucketSize);
+        }
+
+        private static int BetweenSpanCore(string? prev, string? next, Span<char> destination, int bucketSize)
         {
             if (prev == null && next == null)
-                return INITIAL_RANK;
+                return ComputeInitialRankSpan(destination, bucketSize);
 
             if (prev != null && next != null && string.Equals(prev, next, StringComparison.Ordinal))
                 throw new ArgumentException("prev and next cannot be equal", nameof(next));
 
-            // Parse prefix and lexoValue using Span to avoid allocations
-            ReadOnlySpan<char> prevSpan = prev.AsSpan();
-            ReadOnlySpan<char> nextSpan = next.AsSpan();
+            int pSepIdx = prev != null ? FindSeparator(prev) : -1;
+            int nSepIdx = next != null ? FindSeparator(next) : -1;
 
-            int pSepIdx = prev != null ? prev.IndexOf('~') : -1;
-            int nSepIdx = next != null ? next.IndexOf('~') : -1;
+            ReadOnlySpan<char> prevPrefix = pSepIdx >= 0 ? prev.AsSpan(0, pSepIdx) : ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> nextPrefix = nSepIdx >= 0 ? next.AsSpan(0, nSepIdx) : ReadOnlySpan<char>.Empty;
+            ReadOnlySpan<char> prevLexo = pSepIdx >= 0 ? prev.AsSpan(pSepIdx + 1) : (prev != null ? prev.AsSpan() : ReadOnlySpan<char>.Empty);
+            ReadOnlySpan<char> nextLexo = nSepIdx >= 0 ? next.AsSpan(nSepIdx + 1) : (next != null ? next.AsSpan() : ReadOnlySpan<char>.Empty);
 
-            ReadOnlySpan<char> prevPrefix = pSepIdx >= 0 ? prevSpan.Slice(0, pSepIdx) : ReadOnlySpan<char>.Empty;
-            ReadOnlySpan<char> nextPrefix = nSepIdx >= 0 ? nextSpan.Slice(0, nSepIdx) : ReadOnlySpan<char>.Empty;
-            ReadOnlySpan<char> prevLexo = pSepIdx >= 0 ? prevSpan.Slice(pSepIdx + 1) : prevSpan;
-            ReadOnlySpan<char> nextLexo = nSepIdx >= 0 ? nextSpan.Slice(nSepIdx + 1) : nextSpan;
-
-            // Determine prefix: use prev's if available, else next's, else default
             ReadOnlySpan<char> prefix = !prevPrefix.IsEmpty ? prevPrefix : (!nextPrefix.IsEmpty ? nextPrefix : DEFAULT_PREFIX);
 
-            // Cross-bucket: different prefixes
-            if (!prevPrefix.IsEmpty && !nextPrefix.IsEmpty && !prevPrefix.SequenceEqual(nextPrefix))
+            // Cross-bucket
+            if (!prevPrefix.IsEmpty && !nextPrefix.IsEmpty && !SequenceEqual(prevPrefix, nextPrefix))
             {
-                // Step 2b: append minimum char to prev's lexoValue
-                int newLen = prevLexo.Length + 1;
-                var buffer = newLen <= 64 ? stackalloc char[64] : new char[newLen];
-                prevLexo.CopyTo(buffer);
-                buffer[prevLexo.Length] = '0';
-                int totalLen = prefix.Length + 1 + newLen;
-                var resultBuffer = totalLen <= 128 ? stackalloc char[128] : new char[totalLen];
-                prefix.CopyTo(resultBuffer);
-                resultBuffer[prefix.Length] = '~';
-                buffer.Slice(0, newLen).CopyTo(resultBuffer.Slice(prefix.Length + 1));
-                return resultBuffer.Slice(0, totalLen).ToString();
+                return BuildAppendSpan(destination, prefix, prevLexo, MIDDLE_CHAR);
             }
 
-            // Same bucket: compute midpoint using big integer arithmetic on stack
-            int maxLen = Math.Max(prevLexo.Length, nextLexo.Length) + 1;
-            Span<byte> prevBytes = maxLen <= 64 ? stackalloc byte[64] : new byte[maxLen];
-            Span<byte> nextBytes = maxLen <= 64 ? stackalloc byte[64] : new byte[maxLen];
-            Span<byte> sumBytes = maxLen <= 64 ? stackalloc byte[64] : new byte[maxLen];
-
-            int prevLen = prevLexo.IsEmpty ? 0 : DecodeToBytes(prevLexo, prevBytes);
-            int nextLen = nextLexo.IsEmpty ? 0 : DecodeToBytes(nextLexo, nextBytes);
-
-            // Handle null boundaries
+            // Both lexo parts empty
             if (prevLexo.IsEmpty && nextLexo.IsEmpty)
-                return INITIAL_RANK;
+            {
+                if (prev == null)
+                    throw new ArgumentException($"Invalid next rank: '{next}' - lexo part cannot be empty", nameof(next));
+                throw new ArgumentException($"Invalid prev rank: '{prev}' - lexo part cannot be empty", nameof(prev));
+            }
+
+            // prev is null, next has lexo
             if (prevLexo.IsEmpty)
-            {
-                // Insert at beginning: prepend minimum char to next's lexoValue
-                // "0" + nextLexo is always lexicographically less than nextLexo
-                int newLen = nextLexo.Length + 1;
-                var buffer = newLen <= 64 ? stackalloc char[64] : new char[newLen];
-                buffer[0] = '0';
-                nextLexo.CopyTo(buffer.Slice(1));
-                int totalLen = prefix.Length + 1 + newLen;
-                var resultBuffer = totalLen <= 128 ? stackalloc char[128] : new char[totalLen];
-                prefix.CopyTo(resultBuffer);
-                resultBuffer[prefix.Length] = '~';
-                buffer.Slice(0, newLen).CopyTo(resultBuffer.Slice(prefix.Length + 1));
-                return resultBuffer.Slice(0, totalLen).ToString();
-            }
+                return ComputeBeforeSpan(destination, nextLexo, prefix, bucketSize);
+
+            // next is null, prev has lexo
             if (nextLexo.IsEmpty)
-            {
-                // Insert at end: append minimum char to prev's lexoValue
-                // This always produces a lexicographically greater string
-                int newLen = prevLexo.Length + 1;
-                var buffer = newLen <= 64 ? stackalloc char[64] : new char[newLen];
-                prevLexo.CopyTo(buffer);
-                buffer[prevLexo.Length] = '0';
-                int totalLen = prefix.Length + 1 + newLen;
-                var resultBuffer = totalLen <= 128 ? stackalloc char[128] : new char[totalLen];
-                prefix.CopyTo(resultBuffer);
-                resultBuffer[prefix.Length] = '~';
-                buffer.Slice(0, newLen).CopyTo(resultBuffer.Slice(prefix.Length + 1));
-                return resultBuffer.Slice(0, totalLen).ToString();
-            }
+                return ComputeAfterSpan(destination, prevLexo, prefix, bucketSize);
 
-            // Midpoint: (prev + next) / 2
-            int totalLen2 = AddBigNumbers(prevBytes, prevLen, nextBytes, nextLen, sumBytes);
-            int midLen = DivideByTwo(sumBytes, totalLen2, sumBytes, out int _);
-
-            // Check if adjacent (midpoint == prev means no room)
-            if (midLen == prevLen && sumBytes.Slice(0, midLen).SequenceEqual(prevBytes.Slice(0, prevLen)))
-            {
-                // Precision expansion: append minimum char
-                int newLen2 = prevLexo.Length + 1;
-                var buf = newLen2 <= 64 ? stackalloc char[64] : new char[newLen2];
-                prevLexo.CopyTo(buf);
-                buf[prevLexo.Length] = '0';
-                int totalLen3 = prefix.Length + 1 + newLen2;
-                var res = totalLen3 <= 128 ? stackalloc char[128] : new char[totalLen3];
-                prefix.CopyTo(res);
-                res[prefix.Length] = '~';
-                buf.Slice(0, newLen2).CopyTo(res.Slice(prefix.Length + 1));
-                return res.Slice(0, totalLen3).ToString();
-            }
-
-            // Verify the midpoint is lexicographically between prev and next
-            // (numeric midpoint doesn't guarantee this for different-length strings)
-            string candidate = EncodeResult(prefix, sumBytes, midLen);
-            if (string.CompareOrdinal(candidate, prev) > 0 && string.CompareOrdinal(candidate, next) < 0)
-            {
-                return candidate;
-            }
-
-            // Fallback: append minimum char to prev's lexoValue
-            // If this equals next (when next starts with prev), append second-minimum char
-            int newLen3 = prevLexo.Length + 1;
-            var buf2 = newLen3 <= 64 ? stackalloc char[64] : new char[newLen3];
-            prevLexo.CopyTo(buf2);
-            buf2[prevLexo.Length] = '0';
-            
-            var candidateStr = new string(buf2.Slice(0, newLen3));
-            // Check if candidate >= next (would violate ordering)
-            if (string.CompareOrdinal(candidateStr, new string(nextLexo)) >= 0)
-            {
-                // Use second character in charset to ensure we're between prev and next
-                buf2[prevLexo.Length] = CHARSET[1]; // '1'
-            }
-            
-            int totalLen5 = prefix.Length + 1 + newLen3;
-            var res2 = totalLen5 <= 128 ? stackalloc char[128] : new char[totalLen5];
-            prefix.CopyTo(res2);
-            res2[prefix.Length] = '~';
-            buf2.Slice(0, newLen3).CopyTo(res2.Slice(prefix.Length + 1));
-            return res2.Slice(0, totalLen5).ToString();
+            return MidpointSpan(destination, prefix, prevLexo, nextLexo);
         }
 
-        /// <summary>
-        /// Decode Base62 string to big-endian byte array on the given span.
-        /// Returns the number of bytes written.
-        /// </summary>
-        private static int DecodeToBytes(ReadOnlySpan<char> lexo, Span<byte> outBytes)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int FindSeparator(string s)
         {
-            int byteLen = 1;
-            outBytes[0] = 0;
-            foreach (char c in lexo)
+            for (int i = 0; i < s.Length; i++)
             {
-                byte digit = s_charsetIndex[c];
-                // Multiply current number by 62, add digit
-                byte carry = 0;
-                for (int i = byteLen - 1; i >= 0; i--)
-                {
-                    int val = outBytes[i] * 62 + carry;
-                    outBytes[i] = (byte)(val % 256);
-                    carry = (byte)(val / 256);
-                }
-                // Add digit
-                int pos = byteLen - 1;
-                int sum = outBytes[pos] + digit;
-                outBytes[pos] = (byte)(sum % 256);
-                carry = (byte)(sum / 256);
-                while (carry > 0 && pos > 0)
-                {
-                    pos--;
-                    sum = outBytes[pos] + carry;
-                    outBytes[pos] = (byte)(sum % 256);
-                    carry = (byte)(sum / 256);
-                }
-                if (carry > 0 && byteLen < outBytes.Length)
-                {
-                    // Shift right to make room
-                    for (int i = byteLen; i > 0; i--)
-                        outBytes[i] = outBytes[i - 1];
-                    outBytes[0] = carry;
-                    byteLen++;
-                }
+                if (s[i] == SEPARATOR[0])
+                    return i;
             }
-            return byteLen;
+            return -1;
         }
 
-        /// <summary>
-        /// Add two big-endian big integers. Returns total bytes written to outBytes.
-        /// </summary>
-        private static int AddBigNumbers(ReadOnlySpan<byte> a, int aLen, ReadOnlySpan<byte> b, int bLen, Span<byte> outBytes)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool SequenceEqual(ReadOnlySpan<char> a, ReadOnlySpan<char> b)
         {
-            int maxLen = Math.Max(aLen, bLen);
-            byte carry = 0;
-            for (int i = 0; i < maxLen; i++)
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
             {
-                int av = i < aLen ? a[aLen - 1 - i] : 0;
-                int bv = i < bLen ? b[bLen - 1 - i] : 0;
-                int sum = av + bv + carry;
-                outBytes[maxLen - 1 - i] = (byte)(sum % 256);
-                carry = (byte)(sum / 256);
+                if (a[i] != b[i]) return false;
             }
-            if (carry > 0)
-            {
-                for (int i = maxLen; i > 0; i--)
-                    outBytes[i] = outBytes[i - 1];
-                outBytes[0] = carry;
-                return maxLen + 1;
-            }
-            return maxLen;
+            return true;
         }
 
-        private static int DivideByTwo(ReadOnlySpan<byte> num, int len, Span<byte> outBytes, out int outLen)
+        private static int ComputeInitialRankSpan(Span<char> destination, int bucketSize)
         {
-            byte remainder = 0;
-            for (int i = 0; i < len; i++)
-            {
-                int val = (remainder << 8) | num[i];
-                outBytes[i] = (byte)(val / 2);
-                remainder = (byte)(val % 2);
-            }
-            outLen = len;
-            // Trim leading zeros
-            while (outLen > 1 && outBytes[0] == 0)
-            {
-                outBytes.Slice(1, outLen - 1).CopyTo(outBytes);
-                outLen--;
-            }
-            return outLen;
-        }
+            int minLen = MinLengthForCount(bucketSize);
+            int totalLen = DEFAULT_PREFIX.Length + 1 + minLen;
 
-        private static void AddOne(ReadOnlySpan<byte> num, int len, Span<byte> outBytes, out int outLen)
-        {
-            num.Slice(0, len).CopyTo(outBytes);
-            outLen = len;
-            byte carry = 1;
-            for (int i = outLen - 1; i >= 0 && carry > 0; i--)
-            {
-                int sum = outBytes[i] + carry;
-                outBytes[i] = (byte)(sum % 256);
-                carry = (byte)(sum / 256);
-            }
-            if (carry > 0 && outLen < outBytes.Length)
-            {
-                for (int i = outLen; i > 0; i--)
-                    outBytes[i] = outBytes[i - 1];
-                outBytes[0] = carry;
-                outLen++;
-            }
-        }
-
-        private static string EncodeResult(ReadOnlySpan<char> prefix, ReadOnlySpan<byte> bytes, int len)
-        {
-            // Encode big-endian bytes to Base62 using ArrayPool for the output buffer
-            int maxChars = len * 2 + 2; // upper bound
-            char[]? rented = maxChars > 128 ? ArrayPool<char>.Shared.Rent(maxChars) : null;
-            Span<char> buf = rented != null ? rented.AsSpan(0, maxChars) : stackalloc char[128];
-
-            // Copy bytes to a working span
-            Span<byte> work = len <= 64 ? stackalloc byte[64] : new byte[len];
-            bytes.Slice(0, len).CopyTo(work);
+            if (destination.Length < totalLen)
+                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
 
             int pos = 0;
-            while (true)
-            {
-                // Check if all zeros
-                bool allZero = true;
-                for (int i = 0; i < len; i++)
-                {
-                    if (work[i] != 0) { allZero = false; break; }
-                }
-                if (allZero) break;
+            DEFAULT_PREFIX.AsSpan().CopyTo(destination);
+            pos += DEFAULT_PREFIX.Length;
+            destination[pos++] = SEPARATOR[0];
+            for (int i = 0; i < minLen; i++)
+                destination[pos++] = MIDDLE_CHAR;
 
-                // Divide by 62, collect remainder
-                byte remainder = 0;
-                for (int i = 0; i < len; i++)
+            return pos;
+        }
+
+        private static int ComputeBeforeSpan(Span<char> destination, ReadOnlySpan<char> nextLexo, ReadOnlySpan<char> prefix, int bucketSize)
+        {
+            int targetLen = MinLengthForCount(bucketSize);
+
+            if (nextLexo.Length <= targetLen)
+            {
+                int firstCharIdx = CharToIndexFast(nextLexo[0]);
+                if (firstCharIdx > 0)
                 {
-                    int val = (remainder << 8) | work[i];
-                    work[i] = (byte)(val / 62);
-                    remainder = (byte)(val % 62);
+                    int midIdx = firstCharIdx / 2;
+                    return BuildSingleCharSpan(destination, prefix, CHARSET[midIdx]);
                 }
-                buf[pos++] = CHARSET[remainder];
+
+                int prefixIdx = CharToIndexFast(prefix[0]);
+                if (prefixIdx > 0)
+                {
+                    // Use a lower prefix to get a rank that sorts before next
+                    int totalLen = prefix.Length + 2;
+                    if (destination.Length < totalLen)
+                        throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
+
+                    int pos = 0;
+                    destination[pos++] = CHARSET[prefixIdx - 1];
+                    for (int i = 1; i < prefix.Length; i++)
+                        destination[pos++] = prefix[i];
+                    destination[pos++] = SEPARATOR[0];
+                    destination[pos++] = MIDDLE_CHAR;
+                    return pos;
+                }
+
+                throw new InvalidOperationException("Cannot generate rank before the minimum possible rank. Consider rebalancing.");
             }
 
-            if (pos == 0) buf[pos++] = CHARSET[0];
+            int len = Math.Min(targetLen, nextLexo.Length - 1);
+            int resultLen = prefix.Length + 1 + len;
+            if (destination.Length < resultLen)
+                throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
 
-            // Build final: prefix + "~" + reversed base62
-            int totalLen = prefix.Length + 1 + pos;
-            char[]? rented2 = totalLen > 128 ? ArrayPool<char>.Shared.Rent(totalLen) : null;
-            Span<char> result = rented2 != null ? rented2.AsSpan(0, totalLen) : stackalloc char[128];
-            prefix.CopyTo(result);
-            result[prefix.Length] = '~';
-            // Reverse the base62 chars
-            for (int i = 0; i < pos; i++)
-                result[prefix.Length + 1 + i] = buf[pos - 1 - i];
+            int p = 0;
+            prefix.CopyTo(destination.Slice(p));
+            p += prefix.Length;
+            destination[p++] = SEPARATOR[0];
 
-            string str = result.Slice(0, totalLen).ToString();
-            if (rented != null) ArrayPool<char>.Shared.Return(rented);
-            if (rented2 != null) ArrayPool<char>.Shared.Return(rented2);
-            return str;
+            for (int i = 0; i < len; i++)
+            {
+                int charIdx = CharToIndexFast(nextLexo[i]);
+                destination[p++] = charIdx > 0 ? CHARSET[charIdx / 2] : CHARSET[0];
+            }
+            return p;
+        }
+
+        private static int ComputeAfterSpan(Span<char> destination, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> prefix, int bucketSize)
+        {
+            int targetLen = MinLengthForCount(bucketSize);
+
+            if (prevLexo.Length < targetLen)
+            {
+                int totalLen = prefix.Length + 1 + targetLen;
+                if (destination.Length < totalLen)
+                    throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
+
+                int pos = 0;
+                prefix.CopyTo(destination.Slice(pos));
+                pos += prefix.Length;
+                destination[pos++] = SEPARATOR[0];
+                prevLexo.CopyTo(destination.Slice(pos));
+                pos += prevLexo.Length;
+                for (int i = prevLexo.Length; i < targetLen; i++)
+                    destination[pos++] = MIDDLE_CHAR;
+                return pos;
+            }
+
+            return BuildAppendSpan(destination, prefix, prevLexo, MIDDLE_CHAR);
+        }
+
+        private static int MidpointSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> nextLexo)
+        {
+            int diffIdx = -1;
+            int prevVal = 0, nextVal = 0;
+
+            int maxLen = Math.Max(prevLexo.Length, nextLexo.Length);
+            for (int i = 0; i < maxLen; i++)
+            {
+                char pc = i < prevLexo.Length ? prevLexo[i] : CHARSET[0];
+                char nc = i < nextLexo.Length ? nextLexo[i] : CHARSET[0];
+                if (pc != nc)
+                {
+                    diffIdx = i;
+                    prevVal = CharToIndexFast(pc);
+                    nextVal = CharToIndexFast(nc);
+                    break;
+                }
+            }
+
+            if (diffIdx < 0)
+            {
+                diffIdx = prevLexo.Length;
+                prevVal = 0;
+                nextVal = CharToIndexFast(nextLexo[diffIdx]);
+            }
+
+            if (prevVal >= nextVal)
+                throw new ArgumentException($"prev must be less than next (at position {diffIdx}: {prevVal} >= {nextVal})");
+
+            int midVal = (prevVal + nextVal) / 2;
+            if (midVal > prevVal)
+            {
+                int resultLen = prefix.Length + 1 + diffIdx + 1;
+                if (destination.Length < resultLen)
+                    throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
+
+                int pos = 0;
+                prefix.CopyTo(destination.Slice(pos));
+                pos += prefix.Length;
+                destination[pos++] = SEPARATOR[0];
+                for (int i = 0; i < diffIdx && i < prevLexo.Length; i++)
+                    destination[pos++] = prevLexo[i];
+                destination[pos++] = CHARSET[midVal];
+                return pos;
+            }
+
+            return MidpointAfterDiffSpan(destination, prefix, prevLexo, nextLexo, diffIdx);
+        }
+
+        private static int MidpointAfterDiffSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> nextLexo, int diffIdx)
+        {
+            // 当 diffIdx == prevLexo.Length 时，prevLexo 是 nextLexo 的前缀
+            // 此时 nextLexo[diffIdx] 已经确定了比 prevLexo 的补位 '0' 大
+            // 后续位置的上限应该是 nextLexo 的对应字符，而不是 'z'
+            bool prevIsPrefix = (diffIdx == prevLexo.Length);
+            
+            for (int i = diffIdx + 1; ; i++)
+            {
+                int prevCharVal = (i < prevLexo.Length) ? CharToIndexFast(prevLexo[i]) : 0;
+                // 如果 prevLexo 是 nextLexo 的前缀，后续位置用 nextLexo 的字符作为上限
+                // 否则用 'z' 作为上限（因为 nextLexo 在 diffIdx 已经大于 prevLexo）
+                int nextCharVal = prevIsPrefix && i < nextLexo.Length 
+                    ? CharToIndexFast(nextLexo[i]) 
+                    : (prevIsPrefix ? 0 : CHARSET.Length - 1);
+
+                int midVal = (prevCharVal + nextCharVal) / 2;
+
+                if (midVal > prevCharVal)
+                {
+                    int resultLen = prefix.Length + 1 + i + 1;
+                    if (destination.Length < resultLen)
+                        throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
+
+                    int pos = 0;
+                    prefix.CopyTo(destination.Slice(pos));
+                    pos += prefix.Length;
+                    destination[pos++] = SEPARATOR[0];
+                    for (int j = 0; j < i && j < prevLexo.Length; j++)
+                        destination[pos++] = prevLexo[j];
+                    destination[pos++] = CHARSET[midVal];
+                    return pos;
+                }
+                
+                // 如果 prevIsPrefix 且 i 超出 nextLexo 长度，后续都补 '0'
+                // midVal = 0 == prevCharVal，继续循环
+                // 但这会无限循环！需要在 prevIsPrefix 时特殊处理
+                if (prevIsPrefix && i >= nextLexo.Length)
+                {
+                    // prevLexo 和 nextLexo 在 i 位置都补 '0'，无法取中间值
+                    // 此时应该在 prevLexo 末尾追加 '0'，形成 prevLexo + "0"
+                    // 这会比 prevLexo 大，比 nextLexo 小（因为 nextLexo 在 diffIdx 有 '1' > '0'）
+                    // 但这样追加 '0' 后，结果会是 prevLexo + "0"，即 "a" + "0" = "a0"
+                    // 这正是我们要的！
+                    int resultLen = prefix.Length + 1 + prevLexo.Length + 1;
+                    if (destination.Length < resultLen)
+                        throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
+                    
+                    int pos = 0;
+                    prefix.CopyTo(destination.Slice(pos));
+                    pos += prefix.Length;
+                    destination[pos++] = SEPARATOR[0];
+                    prevLexo.CopyTo(destination.Slice(pos));
+                    pos += prevLexo.Length;
+                    destination[pos++] = CHARSET[0]; // 追加 '0'
+                    return pos;
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int CharToIndexFast(char c)
+        {
+            return c < 128 ? CharToIndexTable[c] : 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int BuildAppendSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> lexo, char appendChar)
+        {
+            int totalLen = prefix.Length + 1 + lexo.Length + 1;
+            if (destination.Length < totalLen)
+                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
+
+            int pos = 0;
+            prefix.CopyTo(destination.Slice(pos));
+            pos += prefix.Length;
+            destination[pos++] = SEPARATOR[0];
+            lexo.CopyTo(destination.Slice(pos));
+            pos += lexo.Length;
+            destination[pos++] = appendChar;
+            return pos;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int BuildSingleCharSpan(Span<char> destination, ReadOnlySpan<char> prefix, char c)
+        {
+            int totalLen = prefix.Length + 2;
+            if (destination.Length < totalLen)
+                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
+
+            int pos = 0;
+            prefix.CopyTo(destination.Slice(pos));
+            pos += prefix.Length;
+            destination[pos++] = SEPARATOR[0];
+            destination[pos++] = c;
+            return pos;
         }
 
         public static bool NeedsRebalance(int elementCount, int maxRankLength)
@@ -337,6 +391,7 @@ namespace Salvavida
 
         public static int Compare(string a, string b) => string.CompareOrdinal(a, b);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int MinLengthForCount(int count)
         {
             int len = 1;
@@ -349,7 +404,6 @@ namespace Salvavida
             return len;
         }
 
-        // Simple long-based encode for Rebalance (short ranks, no big number needed)
         private static string Base62Encode(long value, int minLength = 1)
         {
             if (value == 0)
@@ -367,7 +421,6 @@ namespace Salvavida
             int len = 16 - pos;
             if (len < minLength)
             {
-                // Pad with minimum character to ensure fixed length
                 Span<char> padded = stackalloc char[minLength];
                 for (int i = 0; i < minLength - len; i++)
                     padded[i] = CHARSET[0];
