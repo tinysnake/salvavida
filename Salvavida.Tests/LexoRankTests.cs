@@ -152,5 +152,27 @@ namespace Salvavida.Tests
         {
             Assert.That(LexoRank.DEFAULT_BUCKET_SIZE, Is.EqualTo(100));
         }
+
+        [Test]
+        public void Between_AdjacentChars_Insert100Times_NoErrorAndMaintainsOrder()
+        {
+            var ranks = new List<string> { "V~VV", "V~VW" };
+
+            for (int i = 0; i < 100; i++)
+            {
+                var newRank = LexoRank.Between(ranks[i], ranks[i + 1]);
+                ranks.Insert(i + 1, newRank);
+            }
+
+            Assert.That(ranks.Count, Is.EqualTo(102));
+
+            string longestRank = ranks.OrderByDescending(r => r.Length).First();
+            TestContext.Out.WriteLine($"Longest rank: {longestRank} (length: {longestRank.Length})");
+
+            for (int i = 1; i < ranks.Count; i++)
+            {
+                Assert.That(ranks[i], Is.GreaterThan(ranks[i - 1]).Using<string>(StringComparer.Ordinal));
+            }
+        }
     }
 }
