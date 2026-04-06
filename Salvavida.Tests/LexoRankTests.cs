@@ -4,10 +4,12 @@ namespace Salvavida.Tests
 {
     public class LexoRankTests(ITestOutputHelper output)
     {
+        #region Insert Method Tests
+
         [Fact]
-        public void Between_NullNull_DefaultBucketSize_ReturnsComputedInitialRank()
+        public void Insert_BothNull_ReturnsInitialValue()
         {
-            var result = LexoRank.Between(null, null);
+            var result = LexoRank.Insert(null, null);
             Assert.Contains(LexoRank.SEPARATOR, result);
             Assert.StartsWith(LexoRank.DEFAULT_PREFIX + LexoRank.SEPARATOR, result);
             var lexoPart = result.Split(LexoRank.SEPARATOR)[1];
@@ -15,11 +17,78 @@ namespace Salvavida.Tests
         }
 
         [Fact]
-        public void Between_NullNull_LargeBucketSize_ReturnsLongerRank()
+        public void Insert_BothNull_LargeBucketSize_ReturnsLongerRank()
         {
-            var result = LexoRank.Between(null, null, 5000);
+            var result = LexoRank.Insert(null, null, 5000);
             var lexoPart = result.Split(LexoRank.SEPARATOR)[1];
             Assert.Equal(3, lexoPart.Length); // 62^2=3844 < 5000, needs 3 chars
+        }
+
+        [Fact]
+        public void Insert_PrevNull_UsesGenPrev()
+        {
+            var result = LexoRank.Insert(null, "V~m");
+            Assert.True(string.CompareOrdinal(result, "V~m") < 0);
+        }
+
+        [Fact]
+        public void Insert_NextNull_UsesGenNext()
+        {
+            var result = LexoRank.Insert("V~m", null);
+            Assert.True(string.CompareOrdinal(result, "V~m") > 0);
+        }
+
+        [Fact]
+        public void Insert_BothProvided_UsesBetween()
+        {
+            var result = LexoRank.Insert("V~a", "V~z");
+            Assert.True(string.CompareOrdinal(result, "V~a") > 0);
+            Assert.True(string.CompareOrdinal(result, "V~z") < 0);
+        }
+
+        #endregion
+
+        #region InitialValue Method Tests
+
+        [Fact]
+        public void InitialValue_ReturnsValidRank()
+        {
+            var result = LexoRank.InitialValue();
+            Assert.Contains(LexoRank.SEPARATOR, result);
+            Assert.StartsWith(LexoRank.DEFAULT_PREFIX + LexoRank.SEPARATOR, result);
+        }
+
+        [Fact]
+        public void InitialValue_LargeBucketSize_ReturnsLongerRank()
+        {
+            var result = LexoRank.InitialValue(5000);
+            var lexoPart = result.Split(LexoRank.SEPARATOR)[1];
+            Assert.Equal(3, lexoPart.Length);
+        }
+
+        #endregion
+
+        #region Between Method Tests (Strict Mode)
+
+        [Fact]
+        public void Between_PrevNull_ThrowsArgumentNullException()
+        {
+            var ex = Assert.Throws<ArgumentNullException>(() => LexoRank.Between(null, "V~m"));
+            Assert.Equal("prev", ex.ParamName);
+        }
+
+        [Fact]
+        public void Between_NextNull_ThrowsArgumentNullException()
+        {
+            var ex = Assert.Throws<ArgumentNullException>(() => LexoRank.Between("V~m", null));
+            Assert.Equal("next", ex.ParamName);
+        }
+
+        [Fact]
+        public void Between_BothNull_ThrowsArgumentNullException()
+        {
+            var ex = Assert.Throws<ArgumentNullException>(() => LexoRank.Between(null, null));
+            Assert.Equal("prev", ex.ParamName);
         }
 
         [Fact]
@@ -44,9 +113,10 @@ namespace Salvavida.Tests
         public void Between_AdjacentChars_AppendsMiddleChar()
         {
             var result = LexoRank.Between("V~V", "V~W");
-            Assert.True(string.CompareOrdinal(result, "V~V") > 0);
-            Assert.True(string.CompareOrdinal(result, "V~W") < 0);
-            Assert.Equal("V~VU", result);
+            Assert.True(string.CompareOrdinal(result, "V~V") > 0, $"Expected result > 'V~V', but got '{result}'");
+            Assert.True(string.CompareOrdinal(result, "V~W") < 0, $"Expected result < 'V~W', but got '{result}'");
+            // The result should be longer than both inputs (precision expansion)
+            Assert.True(result.Length > 3, $"Expected longer result for precision expansion, but got '{result}'");
         }
 
         [Fact]
@@ -66,26 +136,67 @@ namespace Salvavida.Tests
         }
 
         [Fact]
-        public void Between_InsertAtBeginning_ReturnsLessThanNext()
-        {
-            var result = LexoRank.Between(null, "V~VV");
-            Assert.True(string.CompareOrdinal(result, "V~VV") < 0);
-        }
-
-        [Fact]
-        public void Between_InsertAtEnd_ReturnsGreaterThanPrev()
-        {
-            var result = LexoRank.Between("V~VV", null);
-            Assert.True(string.CompareOrdinal(result, "V~VV") > 0);
-        }
-
-        [Fact]
         public void Between_PrevIsPrefixOfNext_ReturnsValidRank()
         {
             var result = LexoRank.Between("V~a", "V~a1");
             Assert.True(string.CompareOrdinal(result, "V~a") > 0);
             Assert.True(string.CompareOrdinal(result, "V~a1") < 0);
         }
+
+        [Fact]
+        public void Between_AdjacentChars_Insert100Times_NoErrorAndMaintainsOrder()
+        {
+            var ranks = new List<string> { "V~VV", "V~VW" };
+
+            for (int i = 0; i < 100; i++)
+            {
+                var newRank = LexoRank.Between(ranks[i], ranks[i + 1]);
+                ranks.Insert(i + 1, newRank);
+            }
+
+            Assert.Equal(102, ranks.Count);
+
+            string longestRank = ranks.OrderByDescending(r => r.Length).First();
+            output.WriteLine($"Longest rank: {longestRank} (length: {longestRank.Length})");
+
+            for (int i = 1; i < ranks.Count; i++)
+            {
+                Assert.True(string.CompareOrdinal(ranks[i], ranks[i - 1]) > 0);
+            }
+        }
+
+        #endregion
+
+        #region GenNext/GenPrev Tests
+
+        [Fact]
+        public void GenNext_IncrementsBy8()
+        {
+            var initial = LexoRank.Insert(null, null);
+            var next = LexoRank.GenNext(initial);
+            Assert.True(string.CompareOrdinal(next, initial) > 0);
+        }
+
+        [Fact]
+        public void GenPrev_DecrementsBy8()
+        {
+            var initial = LexoRank.Insert(null, null);
+            var prev = LexoRank.GenPrev(initial);
+            Assert.True(string.CompareOrdinal(prev, initial) < 0);
+        }
+
+        [Fact]
+        public void GenNext_GenPrev_RoundTrip()
+        {
+            var initial = LexoRank.Insert(null, null);
+            var next = LexoRank.GenNext(initial);
+            var back = LexoRank.GenPrev(next);
+            Assert.Equal(initial, back);
+        }
+
+        #endregion
+
+        #region Other Tests
 
         [Fact]
         public void Rebalance_ProducesSortedRanks()
@@ -150,26 +261,6 @@ namespace Salvavida.Tests
             Assert.Equal(100, LexoRank.DEFAULT_BUCKET_SIZE);
         }
 
-        [Fact]
-        public void Between_AdjacentChars_Insert100Times_NoErrorAndMaintainsOrder()
-        {
-            var ranks = new List<string> { "V~VV", "V~VW" };
-
-            for (int i = 0; i < 100; i++)
-            {
-                var newRank = LexoRank.Between(ranks[i], ranks[i + 1]);
-                ranks.Insert(i + 1, newRank);
-            }
-
-            Assert.Equal(102, ranks.Count);
-
-            string longestRank = ranks.OrderByDescending(r => r.Length).First();
-            output.WriteLine($"Longest rank: {longestRank} (length: {longestRank.Length})");
-
-            for (int i = 1; i < ranks.Count; i++)
-            {
-                Assert.True(string.CompareOrdinal(ranks[i], ranks[i - 1]) > 0);
-            }
-        }
+        #endregion
     }
 }

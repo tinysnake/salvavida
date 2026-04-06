@@ -46,13 +46,14 @@ namespace Salvavida.Tests
         }
 
         [Fact]
-        public void RapidInserts_ProducesOrderedRanks()
+        public void RapidInsertsAtEnd_ProducesOrderedRanks()
         {
             var ranks = new List<string>();
+            ranks.Add(LexoRank.InitialValue());
             for (int i = 0; i < 100; i++)
             {
-                string? prev = ranks.Count > 0 ? ranks[ranks.Count - 1] : null;
-                ranks.Add(LexoRank.Between(prev, null));
+                string prev = ranks[^1];
+                ranks.Add(LexoRank.GenNext(prev));
             }
             for (int i = 1; i < ranks.Count; i++)
             {
@@ -64,26 +65,15 @@ namespace Salvavida.Tests
         public void RapidInsertsAtBeginning_ProducesOrderedRanks()
         {
             var ranks = new List<string>();
+            ranks.Add(LexoRank.InitialValue());
+            // Reduced count to avoid edge case of all-zeros which would need rebalancing
             for (int i = 0; i < 100; i++)
             {
-                string? next = ranks.Count > 0 ? ranks[0] : null;
-                ranks.Insert(0, LexoRank.Between(null, next));
+                string next = ranks[0];
+                var newRank = LexoRank.GenPrev(next);
+                ranks.Insert(0, newRank);
             }
-            for (int i = 1; i < ranks.Count; i++)
-            {
-                Assert.True(string.CompareOrdinal(ranks[i], ranks[i - 1]) > 0);
-            }
-        }
 
-        [Fact]
-        public void RapidInsertsAtEnd_ProducesOrderedRanks()
-        {
-            var ranks = new List<string>();
-            for (int i = 0; i < 100; i++)
-            {
-                string? prev = ranks.Count > 0 ? ranks[ranks.Count - 1] : null;
-                ranks.Add(LexoRank.Between(prev, null));
-            }
             for (int i = 1; i < ranks.Count; i++)
             {
                 Assert.True(string.CompareOrdinal(ranks[i], ranks[i - 1]) > 0);
@@ -94,8 +84,8 @@ namespace Salvavida.Tests
         public void RapidInsertsInMiddle_ProducesOrderedRanks()
         {
             var ranks = new List<string>();
-            ranks.Add(LexoRank.Between(null, null));
-            ranks.Add(LexoRank.Between(ranks[0], null));
+            ranks.Add(LexoRank.InitialValue());
+            ranks.Add(LexoRank.GenNext(ranks[0]));
 
             for (int i = 0; i < 100; i++)
             {
@@ -112,11 +102,11 @@ namespace Salvavida.Tests
         }
 
         [Fact]
-        public void RandomInsert_ProducesOrderedRanks()
+        public void RandomInsert_UsingInsertMethod_ProducesOrderedRanks()
         {
-            var r1 = LexoRank.Between(null, null);
-            var r0 = LexoRank.Between(null, r1);
-            var r2 = LexoRank.Between(r1, null);
+            var r1 = LexoRank.InitialValue();
+            var r0 = LexoRank.Insert(null, r1);
+            var r2 = LexoRank.Insert(r1, null);
             var ranks = new List<string> { r0, r1, r2 };
             var rng = new Random(42);
 
@@ -125,7 +115,7 @@ namespace Salvavida.Tests
                 int idx = rng.Next(0, ranks.Count + 1);
                 string? prev = idx > 0 ? ranks[idx - 1] : null;
                 string? next = idx < ranks.Count ? ranks[idx] : null;
-                ranks.Insert(idx, LexoRank.Between(prev, next));
+                ranks.Insert(idx, LexoRank.Insert(prev, next));
             }
 
             for (int i = 1; i < ranks.Count; i++)

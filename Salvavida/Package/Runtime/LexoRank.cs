@@ -3,19 +3,20 @@ using System.Runtime.CompilerServices;
 
 namespace Salvavida
 {
+    /// <summary>
+    /// LexoRank is a string-based ranking system that allows O(1) insertions and deletions
+    /// by using lexicographic ordering of strings.
+    /// </summary>
     public static class LexoRank
     {
-        public const string CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        public const string CHARSET = LexoRankHelper.CHARSET;
         public const string SEPARATOR = "~";
         public const int DEFAULT_BUCKET_SIZE = 100;
         public const int REBALANCE_LENGTH_THRESHOLD = 4;
 
         private const int MAX_RESULT_LENGTH = 256;
-        private static readonly int MIDDLE_INDEX = CHARSET.Length / 2; // 31
-        private static readonly char MIDDLE_CHAR = CHARSET[MIDDLE_INDEX]; // 'V'
-        public static readonly string DEFAULT_PREFIX = MIDDLE_CHAR.ToString(); // "V"
 
-        private static readonly byte[] CharToIndexTable = CreateLookupTable();
+        public static readonly string DEFAULT_PREFIX = LexoRankHelper.MIDDLE_CHAR.ToString(); // "V"
 
         // Thread-local buffer for Between() to reuse
         [ThreadStatic] private static char[]? t_buffer;
@@ -29,21 +30,51 @@ namespace Salvavida
             return buf.AsSpan();
         }
 
-        private static byte[] CreateLookupTable()
+        /// <summary>
+        /// Smart insertion method that automatically selects the best strategy:
+        /// - Both null: Returns initial rank (middle value)
+        /// - prev null: Uses GenPrev(next) for uniform distribution
+        /// - next null: Uses GenNext(prev) for uniform distribution
+        /// - Both provided: Uses Between for midpoint calculation
+        /// </summary>
+        public static string Insert(string? prev, string? next, int bucketSize = DEFAULT_BUCKET_SIZE)
         {
-            var table = new byte[128];
-            for (int i = 0; i < CHARSET.Length; i++)
-            {
-                table[CHARSET[i]] = (byte)i;
-            }
-            return table;
+            if (prev == null && next == null)
+                return InitialValue(bucketSize);
+
+            if (prev == null)
+                return GenPrev(next!);
+
+            if (next == null)
+                return GenNext(prev);
+
+            return Between(prev, next, bucketSize);
+        }
+
+        /// <summary>
+        /// Returns the initial rank value (middle position).
+        /// </summary>
+        public static string InitialValue(int bucketSize = DEFAULT_BUCKET_SIZE)
+        {
+            var buffer = GetThreadBuffer();
+            int len = ComputeInitialRankSpan(buffer, bucketSize);
+            return new string(buffer[..len]);
         }
 
         /// <summary>
         /// Computes a rank string between prev and next.
+        /// Both prev and next must be non-null and prev must be less than next.
+        /// For flexible insertion, use Insert() method instead.
         /// </summary>
+        /// <exception cref="ArgumentNullException">Thrown when prev or next is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when prev >= next.</exception>
         public static string Between(string? prev, string? next, int bucketSize = DEFAULT_BUCKET_SIZE)
         {
+            if (prev == null)
+                throw new ArgumentNullException(nameof(prev), "prev cannot be null. Use Insert() for flexible insertion, or GenPrev() for inserting before a rank.");
+            if (next == null)
+                throw new ArgumentNullException(nameof(next), "next cannot be null. Use Insert() for flexible insertion, or GenNext() for inserting after a rank.");
+
             var buffer = GetThreadBuffer();
             int len = BetweenSpanCore(prev, next, buffer, bucketSize);
             return new string(buffer[..len]);
@@ -51,58 +82,473 @@ namespace Salvavida
 
         /// <summary>
         /// High-performance version that writes result to destination buffer.
+        /// Both prev and next must be non-null.
         /// </summary>
-        /// <param name="prev">Previous rank (can be null)</param>
-        /// <param name="next">Next rank (can be null)</param>
-        /// <param name="destination">Buffer to write result to</param>
-        /// <param name="bucketSize">Expected number of insertions</param>
-        /// <returns>Number of characters written to destination</returns>
+        /// <exception cref="ArgumentNullException">Thrown when prev or next is null.</exception>
         public static int BetweenSpan(string? prev, string? next, Span<char> destination, int bucketSize = DEFAULT_BUCKET_SIZE)
         {
+            if (prev == null)
+                throw new ArgumentNullException(nameof(prev), "prev cannot be null. Use Insert() for flexible insertion.");
+            if (next == null)
+                throw new ArgumentNullException(nameof(next), "next cannot be null. Use Insert() for flexible insertion.");
+
             return BetweenSpanCore(prev, next, destination, bucketSize);
         }
 
-        private static int BetweenSpanCore(string? prev, string? next, Span<char> destination, int bucketSize)
+        private static int BetweenSpanCore(string prev, string next, Span<char> destination, int bucketSize)
         {
-            if (prev == null && next == null)
-                return ComputeInitialRankSpan(destination, bucketSize);
-
-            if (prev != null && next != null && string.Equals(prev, next, StringComparison.Ordinal))
+            // Both must be non-null at this point (validated by Between method)
+            if (string.Equals(prev, next, StringComparison.Ordinal))
                 throw new ArgumentException("prev and next cannot be equal", nameof(next));
 
-            int pSepIdx = prev != null ? FindSeparator(prev) : -1;
-            int nSepIdx = next != null ? FindSeparator(next) : -1;
+            int pSepIdx = FindSeparator(prev);
+            int nSepIdx = FindSeparator(next);
 
             ReadOnlySpan<char> prevPrefix = pSepIdx >= 0 ? prev.AsSpan(0, pSepIdx) : ReadOnlySpan<char>.Empty;
             ReadOnlySpan<char> nextPrefix = nSepIdx >= 0 ? next.AsSpan(0, nSepIdx) : ReadOnlySpan<char>.Empty;
-            ReadOnlySpan<char> prevLexo = pSepIdx >= 0 ? prev.AsSpan(pSepIdx + 1) : (prev != null ? prev.AsSpan() : ReadOnlySpan<char>.Empty);
-            ReadOnlySpan<char> nextLexo = nSepIdx >= 0 ? next.AsSpan(nSepIdx + 1) : (next != null ? next.AsSpan() : ReadOnlySpan<char>.Empty);
+            ReadOnlySpan<char> prevLexo = pSepIdx >= 0 ? prev.AsSpan(pSepIdx + 1) : prev.AsSpan();
+            ReadOnlySpan<char> nextLexo = nSepIdx >= 0 ? next.AsSpan(nSepIdx + 1) : next.AsSpan();
 
             ReadOnlySpan<char> prefix = !prevPrefix.IsEmpty ? prevPrefix : (!nextPrefix.IsEmpty ? nextPrefix : DEFAULT_PREFIX);
 
             // Cross-bucket
             if (!prevPrefix.IsEmpty && !nextPrefix.IsEmpty && !SequenceEqual(prevPrefix, nextPrefix))
             {
-                return BuildAppendSpan(destination, prefix, prevLexo, MIDDLE_CHAR);
+                return BuildAppendSpan(destination, prefix, prevLexo, LexoRankHelper.MIDDLE_CHAR);
             }
 
             // Both lexo parts empty
             if (prevLexo.IsEmpty && nextLexo.IsEmpty)
             {
-                if (prev == null)
-                    throw new ArgumentException($"Invalid next rank: '{next}' - lexo part cannot be empty", nameof(next));
-                throw new ArgumentException($"Invalid prev rank: '{prev}' - lexo part cannot be empty", nameof(prev));
+                throw new ArgumentException($"Invalid prev and next rank: both lexo parts are empty");
             }
 
-            // prev is null, next has lexo
             if (prevLexo.IsEmpty)
-                return ComputeBeforeSpan(destination, nextLexo, prefix, bucketSize);
+                throw new ArgumentException($"Invalid prev rank: '{prev}' - lexo part cannot be empty", nameof(prev));
 
-            // next is null, prev has lexo
             if (nextLexo.IsEmpty)
-                return ComputeAfterSpan(destination, prevLexo, prefix, bucketSize);
+                throw new ArgumentException($"Invalid next rank: '{next}' - lexo part cannot be empty", nameof(next));
 
             return MidpointSpan(destination, prefix, prevLexo, nextLexo);
+        }
+
+        private static int MidpointSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> nextLexo)
+        {
+            int diffIdx = -1;
+            int prevVal = 0, nextVal = 0;
+
+            int minLen = Math.Min(prevLexo.Length, nextLexo.Length);
+
+            // Find first difference
+            for (int i = 0; i < minLen; i++)
+            {
+                if (prevLexo[i] != nextLexo[i])
+                {
+                    diffIdx = i;
+                    prevVal = LexoRankHelper.CharToIndex(prevLexo[i]);
+                    nextVal = LexoRankHelper.CharToIndex(nextLexo[i]);
+                    break;
+                }
+            }
+
+            // Handle prefix case
+            if (diffIdx < 0)
+            {
+                if (prevLexo.Length < nextLexo.Length)
+                {
+                    diffIdx = prevLexo.Length;
+                    prevVal = -1;
+                    nextVal = LexoRankHelper.CharToIndex(nextLexo[diffIdx]);
+
+                    if (nextVal == 0)
+                        return MidpointAfterDiffSpan(destination, prefix, prevLexo, nextLexo, diffIdx);
+                }
+                else if (prevLexo.Length > nextLexo.Length)
+                {
+                    diffIdx = nextLexo.Length;
+                    prevVal = LexoRankHelper.CharToIndex(prevLexo[diffIdx]);
+                    nextVal = -1;
+                }
+                else
+                {
+                    throw new ArgumentException("prev and next cannot be equal");
+                }
+            }
+
+            if (prevVal >= nextVal)
+                throw new ArgumentException($"prev must be less than next");
+
+            // Use LexoDecimal for precise midpoint calculation
+            int midVal = ComputeMidpointChar(prevVal, nextVal);
+
+            // Special case: when prevLexo is a prefix of nextLexo and midVal would be 0
+            bool prevIsPrefix = (diffIdx == prevLexo.Length);
+            if (prevIsPrefix && midVal == 0 && nextVal > 0)
+            {
+                int resultLen = prefix.Length + 1 + diffIdx + 2;
+                if (destination.Length < resultLen)
+                    throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+                int pos = 0;
+                prefix.CopyTo(destination.Slice(pos));
+                pos += prefix.Length;
+                destination[pos++] = SEPARATOR[0];
+                for (int i = 0; i < diffIdx && i < prevLexo.Length; i++)
+                    destination[pos++] = prevLexo[i];
+                destination[pos++] = CHARSET[0];
+                destination[pos++] = LexoRankHelper.MIDDLE_CHAR;
+                return pos;
+            }
+
+            if (midVal > prevVal)
+            {
+                int resultLen = prefix.Length + 1 + diffIdx + 1;
+                if (destination.Length < resultLen)
+                    throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+                int pos = 0;
+                prefix.CopyTo(destination.Slice(pos));
+                pos += prefix.Length;
+                destination[pos++] = SEPARATOR[0];
+                for (int i = 0; i < diffIdx && i < prevLexo.Length; i++)
+                    destination[pos++] = prevLexo[i];
+                destination[pos++] = CHARSET[midVal];
+                return pos;
+            }
+
+            return MidpointAfterDiffSpan(destination, prefix, prevLexo, nextLexo, diffIdx);
+        }
+
+        private static int ComputeMidpointChar(int prevVal, int nextVal)
+        {
+            // Use LexoDecimal for precise calculation
+            var prevDec = LexoDecimal.From(LexoInteger.Make(1, new[] { prevVal }));
+            var nextDec = LexoDecimal.From(LexoInteger.Make(1, new[] { nextVal }));
+
+            var sum = prevDec.Add(nextDec);
+            var mid = sum.Multiply(LexoDecimal.Half());
+            var midFloor = mid.Floor();
+
+            return midFloor.GetMag(0);
+        }
+
+        private static int MidpointAfterDiffSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> nextLexo, int diffIdx)
+        {
+            bool prevIsPrefix = (diffIdx == prevLexo.Length);
+
+            // Special case: prevIsPrefix and nextLexo starts with '0' at diffIdx
+            if (prevIsPrefix && diffIdx < nextLexo.Length && nextLexo[diffIdx] == CHARSET[0])
+            {
+                for (int i = diffIdx + 1; i < nextLexo.Length; i++)
+                {
+                    int nextCharVal = LexoRankHelper.CharToIndex(nextLexo[i]);
+                    if (nextCharVal > 0)
+                    {
+                        int midVal = nextCharVal / 2;
+                        int resultLen = prefix.Length + 1 + i + 1;
+                        if (destination.Length < resultLen)
+                            throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+                        int pos = 0;
+                        prefix.CopyTo(destination.Slice(pos));
+                        pos += prefix.Length;
+                        destination[pos++] = SEPARATOR[0];
+                        prevLexo.CopyTo(destination.Slice(pos));
+                        pos += prevLexo.Length;
+                        for (int j = diffIdx; j < i; j++)
+                            destination[pos++] = CHARSET[0];
+                        destination[pos++] = CHARSET[midVal];
+                        return pos;
+                    }
+                }
+
+                int appendResultLen = prefix.Length + 1 + prevLexo.Length + 1;
+                if (destination.Length < appendResultLen)
+                    throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+                int p = 0;
+                prefix.CopyTo(destination.Slice(p));
+                p += prefix.Length;
+                destination[p++] = SEPARATOR[0];
+                prevLexo.CopyTo(destination.Slice(p));
+                p += prevLexo.Length;
+                destination[p++] = LexoRankHelper.MIDDLE_CHAR;
+                return p;
+            }
+
+            for (int i = diffIdx + 1; ; i++)
+            {
+                int prevCharVal = (i < prevLexo.Length) ? LexoRankHelper.CharToIndex(prevLexo[i]) : 0;
+                int nextCharVal = prevIsPrefix && i < nextLexo.Length
+                    ? LexoRankHelper.CharToIndex(nextLexo[i])
+                    : (prevIsPrefix ? 0 : CHARSET.Length - 1);
+
+                int midVal = ComputeMidpointChar(prevCharVal, nextCharVal);
+
+                if (midVal > prevCharVal)
+                {
+                    int resultLen = prefix.Length + 1 + i + 1;
+                    if (destination.Length < resultLen)
+                        throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+                    int pos = 0;
+                    prefix.CopyTo(destination.Slice(pos));
+                    pos += prefix.Length;
+                    destination[pos++] = SEPARATOR[0];
+                    for (int j = 0; j < i && j < prevLexo.Length; j++)
+                        destination[pos++] = prevLexo[j];
+                    destination[pos++] = CHARSET[midVal];
+                    return pos;
+                }
+
+                if (prevIsPrefix && i >= nextLexo.Length)
+                {
+                    int resultLen = prefix.Length + 1 + prevLexo.Length + 1;
+                    if (destination.Length < resultLen)
+                        throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+                    int pos = 0;
+                    prefix.CopyTo(destination.Slice(pos));
+                    pos += prefix.Length;
+                    destination[pos++] = SEPARATOR[0];
+                    prevLexo.CopyTo(destination.Slice(pos));
+                    pos += prevLexo.Length;
+                    destination[pos++] = CHARSET[0];
+                    return pos;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Generates the next rank after the given rank.
+        /// </summary>
+        public static string GenNext(string rank)
+        {
+            SplitRank(rank, out var prefix, out var lexo);
+            var integer = LexoInteger.Parse(lexo.ToString());
+            var nextInt = GenNextInteger(integer);
+            var buffer = GetThreadBuffer();
+            int len = FormatInteger(buffer, prefix, nextInt);
+            return new string(buffer[..len]);
+        }
+
+        /// <summary>
+        /// Generates the previous rank before the given rank.
+        /// </summary>
+        public static string GenPrev(string rank)
+        {
+            SplitRank(rank, out var prefix, out var lexo);
+            var integer = LexoInteger.Parse(lexo.ToString());
+            
+            // Handle edge cases where simple subtraction doesn't work
+            var lexoStr = lexo.ToString();
+            
+            // If the value is very small (single digit close to 0)
+            if (lexoStr.Length == 1)
+            {
+                var firstCharValue = LexoRankHelper.CharToIndex(lexoStr[0]);
+                if (firstCharValue <= 8)
+                {
+                    // "0" can't go lower
+                    if (firstCharValue == 0)
+                        throw new InvalidOperationException("Cannot generate rank before the minimum possible rank.");
+                    
+                    // Return "0" + max char, e.g., "1" -> "0z"
+                    var buffer = GetThreadBuffer();
+                    int pos = 0;
+                    prefix.CopyTo(buffer);
+                    pos += prefix.Length;
+                    buffer[pos++] = SEPARATOR[0];
+                    buffer[pos++] = CHARSET[0]; // "0"
+                    buffer[pos++] = CHARSET[CHARSET.Length - 1]; // "z"
+                    return new string(buffer[..pos]);
+                }
+            }
+            
+            var prevInt = GenPrevInteger(integer);
+            var buf = GetThreadBuffer();
+            int len = FormatInteger(buf, prefix, prevInt);
+            return new string(buf[..len]);
+        }
+
+        /// <summary>
+        /// Returns the minimum possible rank.
+        /// </summary>
+        public static string Min(string prefix = "V")
+        {
+            var buffer = GetThreadBuffer();
+            int len = FormatInteger(buffer, prefix.AsSpan(), LexoInteger.Zero);
+            return new string(buffer[..len]);
+        }
+
+        /// <summary>
+        /// Returns the maximum possible rank.
+        /// </summary>
+        public static string Max(string prefix = "V")
+        {
+            var maxInt = LexoInteger.Parse("zzzzzz");
+            var buffer = GetThreadBuffer();
+            int len = FormatInteger(buffer, prefix.AsSpan(), maxInt);
+            return new string(buffer[..len]);
+        }
+
+        /// <summary>
+        /// Returns the middle rank.
+        /// </summary>
+        public static string Middle(string prefix = "V")
+        {
+            var minInt = LexoInteger.Zero;
+            var maxInt = LexoInteger.Parse("zzzzzz");
+            var midInt = BetweenInteger(minInt, maxInt);
+            var buffer = GetThreadBuffer();
+            int len = FormatInteger(buffer, prefix.AsSpan(), midInt);
+            return new string(buffer[..len]);
+        }
+
+        /// <summary>
+        /// Checks if a rank is the minimum possible rank.
+        /// </summary>
+        public static bool IsMin(string rank)
+        {
+            SplitRank(rank, out _, out var lexo);
+            var integer = LexoInteger.Parse(lexo.ToString());
+            return integer.IsZero;
+        }
+
+        /// <summary>
+        /// Checks if a rank is the maximum possible rank.
+        /// </summary>
+        public static bool IsMax(string rank)
+        {
+            SplitRank(rank, out _, out var lexo);
+            var integer = LexoInteger.Parse(lexo.ToString());
+            var maxInt = LexoInteger.Parse("zzzzzz");
+            return integer.Equals(maxInt);
+        }
+
+        private static LexoInteger GenNextInteger(LexoInteger integer)
+        {
+            var maxInt = LexoInteger.Parse("zzzzzz");
+            var initialMinInt = LexoInteger.Parse("100000");
+            var eightInt = LexoInteger.Parse("8");
+
+            if (integer.IsZero)
+                return initialMinInt;
+
+            var nextInt = integer.Add(eightInt);
+            
+            // Check if the result has more digits (overflow/ carry)
+            // This would make it lexicographically SMALLER, which is wrong
+            // e.g., "z" + 8 = 69 = "17" but "17" < "z" lexicographically
+            if (nextInt.Length > integer.Length)
+            {
+                // Instead of midpoint, append a character to the original
+                // "z" -> "zV" (V is middle char)
+                return LexoInteger.Parse(integer.Format() + "V");
+            }
+            
+            if (nextInt.CompareTo(maxInt) >= 0)
+                return BetweenInteger(integer, maxInt);
+
+            return nextInt;
+        }
+
+        private static LexoInteger GenPrevInteger(LexoInteger integer)
+        {
+            var minInt = LexoInteger.Zero;
+            var maxInt = LexoInteger.Parse("zzzzzz");
+            var initialMaxInt = LexoInteger.Parse("yzzzzz");
+            var eightInt = LexoInteger.Parse("8");
+
+            if (integer.Equals(maxInt))
+                return initialMaxInt;
+
+            if (integer.IsZero)
+            {
+                // Cannot go below zero - this is the minimum
+                throw new InvalidOperationException("Cannot generate rank before the minimum possible rank.");
+            }
+
+            var prevInt = integer.Subtract(eightInt);
+            
+            // If subtraction would go below zero
+            if (prevInt.CompareTo(minInt) <= 0 || prevInt.IsZero)
+            {
+                // For small values like "1", we need a value that's < "1" lexicographically
+                // "0z" < "1" because '0' < '1'
+                // But we need to use the actual format
+                var format = integer.Format();
+                
+                // If it's a single character that's close to minimum
+                if (format.Length == 1)
+                {
+                    var firstCharValue = LexoRankHelper.CharToIndex(format[0]);
+                    if (firstCharValue <= 8)
+                    {
+                        // Return "0" followed by appropriate char
+                        // e.g., for "1" (value 1), return "0z" (value 61)
+                        // "0z" < "1" lexicographically
+                        return LexoInteger.Parse("0z");
+                    }
+                }
+                
+                // Otherwise use midpoint
+                return BetweenInteger(minInt, integer);
+            }
+
+            return prevInt;
+        }
+
+        private static LexoInteger BetweenInteger(LexoInteger left, LexoInteger right)
+        {
+            var leftDec = LexoDecimal.From(left);
+            var rightDec = LexoDecimal.From(right);
+
+            var sum = leftDec.Add(rightDec);
+            var mid = sum.Multiply(LexoDecimal.Half());
+            var midFloor = mid.Floor();
+
+            if (midFloor.CompareTo(left) <= 0)
+                return left.Add(LexoInteger.One);
+
+            if (midFloor.CompareTo(right) >= 0)
+                throw new ArgumentException("Midpoint calculation error: result >= right");
+
+            return midFloor;
+        }
+
+        private static void SplitRank(string rank, out ReadOnlySpan<char> prefix, out ReadOnlySpan<char> lexo)
+        {
+            var sepIdx = FindSeparator(rank);
+            if (sepIdx < 0)
+            {
+                prefix = DEFAULT_PREFIX.AsSpan();
+                lexo = rank.AsSpan();
+            }
+            else
+            {
+                prefix = rank.AsSpan(0, sepIdx);
+                lexo = rank.AsSpan(sepIdx + 1);
+            }
+        }
+
+        private static int FormatInteger(Span<char> destination, ReadOnlySpan<char> prefix, LexoInteger integer)
+        {
+            var formatVal = integer.Format();
+            int totalLen = prefix.Length + 1 + formatVal.Length;
+
+            if (destination.Length < totalLen)
+                throw new ArgumentException($"Destination buffer too small.", nameof(destination));
+
+            int pos = 0;
+            prefix.CopyTo(destination);
+            pos += prefix.Length;
+            destination[pos++] = SEPARATOR[0];
+
+            for (int i = 0; i < formatVal.Length; i++)
+                destination[pos++] = formatVal[i];
+
+            return pos;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,326 +579,16 @@ namespace Salvavida
             int totalLen = DEFAULT_PREFIX.Length + 1 + minLen;
 
             if (destination.Length < totalLen)
-                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
+                throw new ArgumentException($"Destination buffer too small.", nameof(destination));
 
             int pos = 0;
             DEFAULT_PREFIX.AsSpan().CopyTo(destination);
             pos += DEFAULT_PREFIX.Length;
             destination[pos++] = SEPARATOR[0];
             for (int i = 0; i < minLen; i++)
-                destination[pos++] = MIDDLE_CHAR;
+                destination[pos++] = LexoRankHelper.MIDDLE_CHAR;
 
             return pos;
-        }
-
-        private static int ComputeBeforeSpan(Span<char> destination, ReadOnlySpan<char> nextLexo, ReadOnlySpan<char> prefix, int bucketSize)
-        {
-            int targetLen = MinLengthForCount(bucketSize);
-
-            if (nextLexo.Length <= targetLen)
-            {
-                // Use append strategy: reduce last char by 1 for minimal consumption
-                // e.g., "VV" -> "VU" (only 1 position consumed)
-                int lastCharIdx = CharToIndexFast(nextLexo[nextLexo.Length - 1]);
-                if (lastCharIdx > 0)
-                {
-                    // Copy all but last char, then use (lastCharIdx - 1)
-                    int resultLen = prefix.Length + 1 + nextLexo.Length;
-                    if (destination.Length < resultLen)
-                        throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
-
-                    int pos = 0;
-                    prefix.CopyTo(destination.Slice(pos));
-                    pos += prefix.Length;
-                    destination[pos++] = SEPARATOR[0];
-                    nextLexo.Slice(0, nextLexo.Length - 1).CopyTo(destination.Slice(pos));
-                    pos += nextLexo.Length - 1;
-                    destination[pos++] = CHARSET[lastCharIdx - 1];
-                    return pos;
-                }
-
-                // Last char is '0', need to handle differently
-                // Try to reduce the previous char, or use prefix change
-                int firstCharIdx = CharToIndexFast(nextLexo[0]);
-                if (firstCharIdx > 0)
-                {
-                    // Reduce first char by 1 and pad with high char
-                    return BuildSingleCharSpan(destination, prefix, CHARSET[firstCharIdx - 1]);
-                }
-
-                int prefixIdx = CharToIndexFast(prefix[0]);
-                if (prefixIdx > 0)
-                {
-                    // Use a lower prefix to get a rank that sorts before next
-                    int bufLen = prefix.Length + 2;
-                    if (destination.Length < bufLen)
-                        throw new ArgumentException($"Destination buffer too small. Need at least {bufLen} characters.", nameof(destination));
-
-                    int pos = 0;
-                    destination[pos++] = CHARSET[prefixIdx - 1];
-                    for (int i = 1; i < prefix.Length; i++)
-                        destination[pos++] = prefix[i];
-                    destination[pos++] = SEPARATOR[0];
-                    destination[pos++] = MIDDLE_CHAR;
-                    return pos;
-                }
-
-                throw new InvalidOperationException("Cannot generate rank before the minimum possible rank. Consider rebalancing.");
-            }
-
-            int len = Math.Min(targetLen, nextLexo.Length - 1);
-            int totalLen = prefix.Length + 1 + len;
-            if (destination.Length < totalLen)
-                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
-
-            int p = 0;
-            prefix.CopyTo(destination.Slice(p));
-            p += prefix.Length;
-            destination[p++] = SEPARATOR[0];
-
-            for (int i = 0; i < len; i++)
-            {
-                int charIdx = CharToIndexFast(nextLexo[i]);
-                destination[p++] = charIdx > 0 ? CHARSET[charIdx / 2] : CHARSET[0];
-            }
-            return p;
-        }
-
-        private static int ComputeAfterSpan(Span<char> destination, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> prefix, int bucketSize)
-        {
-            int targetLen = MinLengthForCount(bucketSize);
-
-            // Append strategy: add MIDDLE_CHAR for minimal consumption
-            // e.g., "VV" -> "VVV" (only 1 position consumed)
-            if (prevLexo.Length < targetLen)
-            {
-                int totalLen = prefix.Length + 1 + targetLen;
-                if (destination.Length < totalLen)
-                    throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
-
-                int pos = 0;
-                prefix.CopyTo(destination.Slice(pos));
-                pos += prefix.Length;
-                destination[pos++] = SEPARATOR[0];
-                prevLexo.CopyTo(destination.Slice(pos));
-                pos += prevLexo.Length;
-                for (int i = prevLexo.Length; i < targetLen; i++)
-                    destination[pos++] = MIDDLE_CHAR;
-                return pos;
-            }
-
-            return BuildAppendSpan(destination, prefix, prevLexo, MIDDLE_CHAR);
-        }
-
-        private static int MidpointSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> nextLexo)
-        {
-            int diffIdx = -1;
-            int prevVal = 0, nextVal = 0;
-
-            int minLen = Math.Min(prevLexo.Length, nextLexo.Length);
-            int maxLen = Math.Max(prevLexo.Length, nextLexo.Length);
-
-            // First, compare up to the shorter length
-            for (int i = 0; i < minLen; i++)
-            {
-                if (prevLexo[i] != nextLexo[i])
-                {
-                    diffIdx = i;
-                    prevVal = CharToIndexFast(prevLexo[i]);
-                    nextVal = CharToIndexFast(nextLexo[i]);
-                    break;
-                }
-            }
-
-            // If no difference found in common prefix, handle length difference
-            if (diffIdx < 0)
-            {
-                if (prevLexo.Length < nextLexo.Length)
-                {
-                    // prevLexo is a prefix of nextLexo
-                    // "VV" < "VV0" because shorter prefix comes first
-                    diffIdx = prevLexo.Length;
-                    prevVal = -1; // prevLexo ends here, treat as "virtual character" before '0'
-                    nextVal = CharToIndexFast(nextLexo[diffIdx]);
-                    
-                    // If nextLexo continues with '0', we can't find a midpoint directly
-                    // We need to append to prevLexo to create a value between them
-                    if (nextVal == 0)
-                    {
-                        return MidpointAfterDiffSpan(destination, prefix, prevLexo, nextLexo, diffIdx);
-                    }
-                }
-                else if (prevLexo.Length > nextLexo.Length)
-                {
-                    // nextLexo is a prefix of prevLexo - this is invalid!
-                    // "VV0" > "VV" but we're being told prev < next
-                    diffIdx = nextLexo.Length;
-                    prevVal = CharToIndexFast(prevLexo[diffIdx]);
-                    nextVal = -1; // nextLexo ends here, treat as "virtual character" before '0'
-                }
-                else
-                {
-                    // Strings are equal - invalid input
-                    throw new ArgumentException("prev and next cannot be equal");
-                }
-            }
-
-            if (prevVal >= nextVal)
-                throw new ArgumentException($"prev must be less than next (at position {diffIdx}: {prevVal} >= {nextVal})");
-
-            int midVal = (prevVal + nextVal) / 2;
-            
-            // Special case: when prevLexo is a prefix of nextLexo and midVal would be 0,
-            // we should pad with MIDDLE_CHAR to leave room for future inserts
-            // e.g., prev="VV", next="VV1" -> should create "VV0V" not "VV0"
-            // This is because "VV" and "VV0" are adjacent (no room to insert between)
-            bool prevIsPrefix = (diffIdx == prevLexo.Length);
-            if (prevIsPrefix && midVal == 0 && nextVal > 0)
-            {
-                // Pad with MIDDLE_CHAR to create room for future inserts
-                int resultLen = prefix.Length + 1 + diffIdx + 2;
-                if (destination.Length < resultLen)
-                    throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
-
-                int pos = 0;
-                prefix.CopyTo(destination.Slice(pos));
-                pos += prefix.Length;
-                destination[pos++] = SEPARATOR[0];
-                for (int i = 0; i < diffIdx && i < prevLexo.Length; i++)
-                    destination[pos++] = prevLexo[i];
-                destination[pos++] = CHARSET[0]; // '0'
-                destination[pos++] = MIDDLE_CHAR; // 'V'
-                return pos;
-            }
-            
-            if (midVal > prevVal)
-            {
-                int resultLen = prefix.Length + 1 + diffIdx + 1;
-                if (destination.Length < resultLen)
-                    throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
-
-                int pos = 0;
-                prefix.CopyTo(destination.Slice(pos));
-                pos += prefix.Length;
-                destination[pos++] = SEPARATOR[0];
-                for (int i = 0; i < diffIdx && i < prevLexo.Length; i++)
-                    destination[pos++] = prevLexo[i];
-                destination[pos++] = CHARSET[midVal];
-                return pos;
-            }
-
-            return MidpointAfterDiffSpan(destination, prefix, prevLexo, nextLexo, diffIdx);
-        }
-
-        private static int MidpointAfterDiffSpan(Span<char> destination, ReadOnlySpan<char> prefix, ReadOnlySpan<char> prevLexo, ReadOnlySpan<char> nextLexo, int diffIdx)
-        {
-            // 当 diffIdx == prevLexo.Length 时，prevLexo 是 nextLexo 的前缀
-            // 此时 nextLexo[diffIdx] 已经确定了比 prevLexo 的补位 '0' 大
-            // 后续位置的上限应该是 nextLexo 的对应字符，而不是 'z'
-            bool prevIsPrefix = (diffIdx == prevLexo.Length);
-            
-            // Special case: if prevIsPrefix and nextLexo starts with '0' at diffIdx,
-            // we need to check if we can find a midpoint in subsequent positions
-            if (prevIsPrefix && diffIdx < nextLexo.Length && nextLexo[diffIdx] == CHARSET[0])
-            {
-                // Look for first position where we can insert a character > '0' but < nextLexo[i]
-                for (int i = diffIdx + 1; i < nextLexo.Length; i++)
-                {
-                    int nextCharVal = CharToIndexFast(nextLexo[i]);
-                    if (nextCharVal > 0)
-                    {
-                        // We can use prevLexo + '0'*(i - diffIdx - 1) + midChar
-                        int midVal = nextCharVal / 2;
-                        int resultLen = prefix.Length + 1 + i + 1;
-                        if (destination.Length < resultLen)
-                            throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
-                        
-                        int pos = 0;
-                        prefix.CopyTo(destination.Slice(pos));
-                        pos += prefix.Length;
-                        destination[pos++] = SEPARATOR[0];
-                        prevLexo.CopyTo(destination.Slice(pos));
-                        pos += prevLexo.Length;
-                        for (int j = diffIdx; j < i; j++)
-                            destination[pos++] = CHARSET[0]; // Fill with '0'
-                        destination[pos++] = CHARSET[midVal];
-                        return pos;
-                    }
-                }
-                
-                // All subsequent chars in nextLexo are '0', append '0' to prevLexo
-                // But this would equal nextLexo! We need to append MIDDLE_CHAR instead
-                int appendResultLen = prefix.Length + 1 + prevLexo.Length + 1;
-                if (destination.Length < appendResultLen)
-                    throw new ArgumentException($"Destination buffer too small. Need at least {appendResultLen} characters.", nameof(destination));
-                
-                int p = 0;
-                prefix.CopyTo(destination.Slice(p));
-                p += prefix.Length;
-                destination[p++] = SEPARATOR[0];
-                prevLexo.CopyTo(destination.Slice(p));
-                p += prevLexo.Length;
-                destination[p++] = MIDDLE_CHAR; // Append 'V' (middle char) instead of '0'
-                return p;
-            }
-            
-            for (int i = diffIdx + 1; ; i++)
-            {
-                int prevCharVal = (i < prevLexo.Length) ? CharToIndexFast(prevLexo[i]) : 0;
-                // 如果 prevLexo 是 nextLexo 的前缀，后续位置用 nextLexo 的字符作为上限
-                // 否则用 'z' 作为上限（因为 nextLexo 在 diffIdx 已经大于 prevLexo）
-                int nextCharVal = prevIsPrefix && i < nextLexo.Length 
-                    ? CharToIndexFast(nextLexo[i]) 
-                    : (prevIsPrefix ? 0 : CHARSET.Length - 1);
-
-                int midVal = (prevCharVal + nextCharVal) / 2;
-
-                if (midVal > prevCharVal)
-                {
-                    int resultLen = prefix.Length + 1 + i + 1;
-                    if (destination.Length < resultLen)
-                        throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
-
-                    int pos = 0;
-                    prefix.CopyTo(destination.Slice(pos));
-                    pos += prefix.Length;
-                    destination[pos++] = SEPARATOR[0];
-                    for (int j = 0; j < i && j < prevLexo.Length; j++)
-                        destination[pos++] = prevLexo[j];
-                    destination[pos++] = CHARSET[midVal];
-                    return pos;
-                }
-                
-                // 如果 prevIsPrefix 且 i 超出 nextLexo 长度，后续都补 '0'
-                // midVal = 0 == prevCharVal，继续循环
-                // 但这会无限循环！需要在 prevIsPrefix 时特殊处理
-                if (prevIsPrefix && i >= nextLexo.Length)
-                {
-                    // prevLexo 和 nextLexo 在 i 位置都补 '0'，无法取中间值
-                    // 此时应该在 prevLexo 末尾追加 '0'，形成 prevLexo + "0"
-                    // 这会比 prevLexo 大，比 nextLexo 小（因为 nextLexo 在 diffIdx 有 '1' > '0'）
-                    // 但这样追加 '0' 后，结果会是 prevLexo + "0"，即 "a" + "0" = "a0"
-                    // 这正是我们要的！
-                    int resultLen = prefix.Length + 1 + prevLexo.Length + 1;
-                    if (destination.Length < resultLen)
-                        throw new ArgumentException($"Destination buffer too small. Need at least {resultLen} characters.", nameof(destination));
-                    
-                    int pos = 0;
-                    prefix.CopyTo(destination.Slice(pos));
-                    pos += prefix.Length;
-                    destination[pos++] = SEPARATOR[0];
-                    prevLexo.CopyTo(destination.Slice(pos));
-                    pos += prevLexo.Length;
-                    destination[pos++] = CHARSET[0]; // 追加 '0'
-                    return pos;
-                }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int CharToIndexFast(char c)
-        {
-            return c < 128 ? CharToIndexTable[c] : 0;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -460,7 +596,7 @@ namespace Salvavida
         {
             int totalLen = prefix.Length + 1 + lexo.Length + 1;
             if (destination.Length < totalLen)
-                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
+                throw new ArgumentException($"Destination buffer too small.", nameof(destination));
 
             int pos = 0;
             prefix.CopyTo(destination.Slice(pos));
@@ -469,21 +605,6 @@ namespace Salvavida
             lexo.CopyTo(destination.Slice(pos));
             pos += lexo.Length;
             destination[pos++] = appendChar;
-            return pos;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int BuildSingleCharSpan(Span<char> destination, ReadOnlySpan<char> prefix, char c)
-        {
-            int totalLen = prefix.Length + 2;
-            if (destination.Length < totalLen)
-                throw new ArgumentException($"Destination buffer too small. Need at least {totalLen} characters.", nameof(destination));
-
-            int pos = 0;
-            prefix.CopyTo(destination.Slice(pos));
-            pos += prefix.Length;
-            destination[pos++] = SEPARATOR[0];
-            destination[pos++] = c;
             return pos;
         }
 

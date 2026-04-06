@@ -7,6 +7,8 @@ obj/
 *.user
 /*.meta
 .worktrees/
+.understand-anything/
 
+Salvavida.Benchmarks/BenchmarkDotNet.Artifacts/
 Salvavida.Generator.Debug/Generated/
 Salvavida.Generator.Debug/salvavida.output.log
