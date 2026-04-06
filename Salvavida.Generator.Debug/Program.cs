@@ -43,13 +43,6 @@ namespace Salvavida.Generator.Debug
             //tc.SetHeader(new Dictionary<string, Test3>());
             //tc.Header["deporte"] = new Test3();
             //tc.Header["deporte"].Name = "fútbol";
-
-            var rank1 = LexoRank.Between(null, null);
-            var rank2 = LexoRank.Between(rank1, "A~z");
-            var randBetween = LexoRank.Between(rank1, rank2);
-            Console.WriteLine("rank1: " + rank1);
-            Console.WriteLine("rank2: " + rank2);
-            Console.WriteLine("random between: " + randBetween);
         }
     }
 }

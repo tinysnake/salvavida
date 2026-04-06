@@ -345,7 +345,7 @@ namespace Salvavida
 
             if (_needsRebalance && _list != null)
             {
-                var newRanks = LexoRank.Rebalance(_list.Count);
+                var newRanks = FakeLexoRank.Rebalance(_list.Count);
                 var oldIds = SvHelper.idListPool.Get();
                 try
                 {
@@ -353,7 +353,7 @@ namespace Salvavida
                     {
                         if (_list[i] != null && !string.IsNullOrEmpty(_list[i].SvId))
                             oldIds.Add(_list[i].SvId);
-                        _list[i].SvId = LexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
+                        _list[i].SvId = FakeLexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
                     }
                     for (int i = 0; i < _list.Count; i++)
                     {
@@ -524,12 +524,12 @@ namespace Salvavida
             string? nextId = index < _list.Count ? _list[index]?.SvId : null;
 
             Span<char> rankBuffer = stackalloc char[128];
-            int rankLen = LexoRank.BetweenSpan(prevId, nextId, rankBuffer);
+            int rankLen = FakeLexoRank.BetweenSpan(prevId, nextId, rankBuffer);
             item.SvId = new string(rankBuffer.Slice(0, rankLen));
 
             var lexoPart = item.SvId.AsSpan();
             int sepIdx = lexoPart.IndexOf('~');
-            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > LexoRank.REBALANCE_LENGTH_THRESHOLD)
+            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > FakeLexoRank.REBALANCE_LENGTH_THRESHOLD)
                 _needsRebalance = true;
 
             _list.Insert(index, item);
@@ -548,7 +548,7 @@ namespace Salvavida
                 var item = collection[i];
                 string? prevId = (index + i) > 0 ? _list[index + i - 1]?.SvId : null;
                 string? nextId = (index + i + 1) < _list.Count ? _list[index + i + 1]?.SvId : null;
-                int rankLen = LexoRank.BetweenSpan(prevId, nextId, rankBuffer);
+                int rankLen = FakeLexoRank.BetweenSpan(prevId, nextId, rankBuffer);
                 item.SvId = new string(rankBuffer.Slice(0, rankLen));
                 OnItemSet(item, i + index);
             }

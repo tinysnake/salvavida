@@ -216,7 +216,7 @@ namespace Salvavida
             if (_bucketCumulativeIndex.Length == 0)
             {
                 // No buckets yet — all elements in default bucket "A"
-                return (LexoRank.DEFAULT_PREFIX, elementIndex);
+                return (FakeLexoRank.DEFAULT_PREFIX, elementIndex);
             }
 
             // Binary search for the bucket
@@ -338,7 +338,7 @@ namespace Salvavida
                 var page = GetOrLoadPage(pageIndex);
 
                 string? prevId = GetElementRank(_totalElementCount - 1);
-                item.SvId = LexoRank.Between(prevId, null);
+                item.SvId = FakeLexoRank.Between(prevId, null);
 
                 page.Elements.Add(item);
                 page.IsDirty = true;
@@ -413,7 +413,7 @@ namespace Salvavida
                 string? prevId = GetElementRank(index - 1);
                 string? nextId = GetElementRank(index);
 
-                item.SvId = LexoRank.Between(prevId, nextId);
+                item.SvId = FakeLexoRank.Between(prevId, nextId);
 
                 int targetPageIdx = index / _pageSize;
                 var page = GetOrLoadPage(targetPageIdx);
@@ -437,7 +437,7 @@ namespace Salvavida
                 _hasPendingWrites = true;
 
                 var rankParts = item.SvId.Split('~');
-                if (rankParts.Length == 2 && rankParts[1].Length > LexoRank.REBALANCE_LENGTH_THRESHOLD)
+                if (rankParts.Length == 2 && rankParts[1].Length > FakeLexoRank.REBALANCE_LENGTH_THRESHOLD)
                     _needsRebalance = true;
 
                 OnItemSet(item, index);
@@ -635,15 +635,15 @@ namespace Salvavida
             var chars = value.ToCharArray();
             for (int i = chars.Length - 1; i >= 0; i--)
             {
-                int idx = Array.IndexOf(LexoRank.CHARSET.ToCharArray(), chars[i]);
-                if (idx < LexoRank.CHARSET.Length - 1)
+                int idx = Array.IndexOf(FakeLexoRank.CHARSET.ToCharArray(), chars[i]);
+                if (idx < FakeLexoRank.CHARSET.Length - 1)
                 {
-                    chars[i] = LexoRank.CHARSET[idx + 1];
+                    chars[i] = FakeLexoRank.CHARSET[idx + 1];
                     return new string(chars);
                 }
-                chars[i] = LexoRank.CHARSET[0];
+                chars[i] = FakeLexoRank.CHARSET[0];
             }
-            return LexoRank.CHARSET[1] + new string(chars);
+            return FakeLexoRank.CHARSET[1] + new string(chars);
         }
 
         private int[] RecomputeCumulativeIndex()
@@ -670,7 +670,7 @@ namespace Salvavida
                     int midIdx = startIdx + (endIdx - startIdx) / 2;
                     string newPrefix = GetNextBucketPrefix();
 
-                    var firstHalfRanks = LexoRank.Rebalance(midIdx - startIdx);
+                    var firstHalfRanks = FakeLexoRank.Rebalance(midIdx - startIdx);
                     for (int j = startIdx; j < midIdx; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
@@ -682,7 +682,7 @@ namespace Salvavida
                         }
                     }
 
-                    var secondHalfRanks = LexoRank.Rebalance(endIdx - midIdx);
+                    var secondHalfRanks = FakeLexoRank.Rebalance(endIdx - midIdx);
                     for (int j = midIdx; j < endIdx; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
@@ -728,7 +728,7 @@ namespace Salvavida
                     int endIdx = _bucketCumulativeIndex[i + 1];
                     string mergePrefix = _bucketMetas[i].BucketId;
 
-                    var newRanks = LexoRank.Rebalance(endIdx - startIdx);
+                    var newRanks = FakeLexoRank.Rebalance(endIdx - startIdx);
                     for (int j = startIdx; j < endIdx; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
@@ -765,14 +765,14 @@ namespace Salvavida
         {
             if (_bucketMetas.Length == 0)
             {
-                var newRanks = LexoRank.Rebalance(_totalElementCount);
+                var newRanks = FakeLexoRank.Rebalance(_totalElementCount);
                 for (int i = 0; i < _totalElementCount; i++)
                 {
                     var page = GetOrLoadPage(i / _pageSize);
                     var elem = page.Elements[i % _pageSize];
                     if (elem != null)
                     {
-                        elem.SvId = LexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
+                        elem.SvId = FakeLexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
                         serializer.Save(elem, ctx, PathBuilder.Type.Collection);
                     }
                 }
@@ -783,7 +783,7 @@ namespace Salvavida
                 {
                     int startIdx = i > 0 ? _bucketCumulativeIndex[i - 1] : 0;
                     int count = _bucketMetas[i].Count;
-                    var newRanks = LexoRank.Rebalance(count);
+                    var newRanks = FakeLexoRank.Rebalance(count);
                     for (int j = startIdx; j < startIdx + count; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
