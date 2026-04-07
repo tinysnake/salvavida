@@ -420,6 +420,75 @@ namespace Salvavida
 
         #endregion
 
+        #region Public API - Rebalance
+
+        /// <summary>
+        /// Calculates the starting rank for a rebalanced sequence.
+        /// </summary>
+        /// <param name="currentRank">The current rank to derive bucket/chunk from</param>
+        /// <param name="count">Number of items to distribute</param>
+        /// <param name="rebalanceChunk">If true, rebalance chunkId; otherwise rebalance rankValue</param>
+        /// <param name="step">The step size between consecutive ranks</param>
+        /// <param name="reverseOrder">If true, ranks should be generated in reverse (GenNext) direction</param>
+        /// <returns>The starting rank for the rebalanced sequence</returns>
+        public static string Rebalance(string currentRank, int count, bool rebalanceChunk, out int step, out bool reverseOrder)
+        {
+            if (string.IsNullOrEmpty(currentRank))
+                throw new ArgumentNullException(nameof(currentRank));
+            if (count <= 0)
+                throw new ArgumentOutOfRangeException(nameof(count), "Count must be greater than 0");
+
+            int precisionDigits = CalculatePrecisionDigits(count);
+            long totalCapacity = (long)Math.Pow(BASE, precisionDigits);
+            step = (int)(totalCapacity / (count + 1));
+
+            Parse(currentRank.AsSpan(), out var bucketId, out var chunkId, out var rankValue);
+
+            if (rebalanceChunk)
+            {
+                long offset = (long)count * step / 2;
+
+                Span<char> initBuffer = stackalloc char[precisionDigits];
+                for (int i = 0; i < precisionDigits; i++)
+                    initBuffer[i] = 'V';
+
+                Span<char> chunkBuffer = stackalloc char[initBuffer.Length + 2];
+                var length = IncrementRank(initBuffer, (int)offset, precisionDigits, chunkBuffer, out var overflow);
+                if (overflow)
+                {
+                    var maxVal = GetMaxValue(precisionDigits);
+                    length = CalculateMiddle(initBuffer, maxVal.AsSpan(), chunkBuffer);
+                }
+
+                reverseOrder = true;
+                int totalLen = bucketId.Length + 1 + length + 1 + rankValue.Length;
+                Span<char> rankBuffer = stackalloc char[totalLen];
+                Build(bucketId, chunkBuffer[..length], rankValue, rankBuffer);
+                return new string(rankBuffer.Slice(0, totalLen));
+            }
+            else
+            {
+                long offset = (long)count * step / 2;
+
+                Span<char> initBuffer = stackalloc char[precisionDigits];
+                for (int i = 0; i < precisionDigits; i++)
+                    initBuffer[i] = 'V';
+
+                Span<char> rankBuffer = stackalloc char[initBuffer.Length + 2];
+                var length = DecrementRank(initBuffer, (int)offset, precisionDigits, rankBuffer, out var underflow);
+                if (underflow)
+                {
+                    var minVal = GetMinValue(precisionDigits);
+                    length = CalculateMiddle(minVal.AsSpan(), initBuffer, rankBuffer);
+                }
+
+                reverseOrder = false;
+                return Build(bucketId, chunkId, rankBuffer[..length]).ToString();
+            }
+        }
+
+        #endregion
+
         #region Private Helper Methods
 
         private static int CharToValue(char c)

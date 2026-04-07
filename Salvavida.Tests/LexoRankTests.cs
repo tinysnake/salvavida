@@ -567,5 +567,91 @@ namespace Salvavida.Tests
         }
 
         #endregion
+
+        #region Rebalance Tests
+
+        [Fact]
+        public void Rebalance_ReturnsValidStartRank()
+        {
+            var currentRank = "0~VV~VV";
+            var result = LexoRank.Rebalance(currentRank, 10, false, out int step, out bool reverseOrder);
+
+            Assert.NotNull(result);
+            Assert.True(step > 0);
+            Assert.False(reverseOrder);
+            LexoRank.Parse(result.AsSpan(), out var bucketId, out var chunkId, out var rank);
+            Assert.Equal("0", bucketId.ToString());
+            Assert.Equal("VV", chunkId.ToString());
+        }
+
+        [Fact]
+        public void Rebalance_RebalanceChunk_ReturnsNewChunkId()
+        {
+            var currentRank = "A~VV~someRank";
+            var result = LexoRank.Rebalance(currentRank, 10, true, out int step, out bool reverseOrder);
+
+            Assert.NotNull(result);
+            Assert.True(step > 0);
+            Assert.True(reverseOrder);
+            LexoRank.Parse(result.AsSpan(), out var bucketId, out var chunkId, out var rank);
+            Assert.Equal("A", bucketId.ToString());
+            Assert.Equal("someRank", rank.ToString());
+            Assert.NotEqual("VV", chunkId.ToString());
+        }
+
+        [Fact]
+        public void Rebalance_StepIsConsistent()
+        {
+            var currentRank = "0~VV~VV";
+            var result = LexoRank.Rebalance(currentRank, 5, false, out int step, out _);
+
+            // step = 62^1 / (5+1) = 62/6 = 10
+            Assert.Equal(10, step);
+        }
+
+        [Fact]
+        public void Rebalance_GeneratedRanksAreOrdered()
+        {
+            var currentRank = "0~VV~VV";
+            var startRank = LexoRank.Rebalance(currentRank, 5, false, out int step, out bool reverseOrder);
+
+            Assert.False(reverseOrder);
+
+            Span<char> buffer = stackalloc char[128];
+            string prevRank = startRank;
+            int precisionDigits = LexoRank.CalculatePrecisionDigits(5);
+
+            for (int i = 1; i <= 5; i++)
+            {
+                var length = LexoRank.GenNext(prevRank, precisionDigits, buffer, step);
+                var nextRank = new string(buffer[..length]);
+
+                LexoRank.Parse(prevRank.AsSpan(), out _, out _, out var prevRankValue);
+                LexoRank.Parse(nextRank.AsSpan(), out _, out _, out var nextRankValue);
+
+                Assert.True(LexoRank.Compare(prevRankValue, nextRankValue) < 0);
+                prevRank = nextRank;
+            }
+        }
+
+        [Fact]
+        public void Rebalance_InvalidCount_Throws()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                LexoRank.Rebalance("0~VV~VV", 0, false, out _, out _));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                LexoRank.Rebalance("0~VV~VV", -1, false, out _, out _));
+        }
+
+        [Fact]
+        public void Rebalance_NullRank_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                LexoRank.Rebalance(null, 10, false, out _, out _));
+            Assert.Throws<ArgumentNullException>(() =>
+                LexoRank.Rebalance("", 10, false, out _, out _));
+        }
+
+        #endregion
     }
 }
