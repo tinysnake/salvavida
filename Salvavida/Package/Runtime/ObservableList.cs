@@ -268,6 +268,9 @@ namespace Salvavida
     public sealed class ObservableListSavable<T> : ObservableListSavableBase<ObservableListSavable<T>, T>, ICollectionWrapper<List<T?>>
         where T : ISavable
     {
+        private const int DEFAULT_PRECISION_DIGITS = 2;
+        private const int REBALANCE_LENGTH_THRESHOLD = 10;
+
         public ObservableListSavable(string propName, List<T?>? src, bool saveSeparately)
            : base(propName, saveSeparately)
         {
@@ -353,7 +356,7 @@ namespace Salvavida
                     {
                         if (_list[i] != null && !string.IsNullOrEmpty(_list[i].SvId))
                             oldIds.Add(_list[i].SvId);
-                        _list[i].SvId = FakeLexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
+                        _list[i].SvId = "0~" + newRanks[i];
                     }
                     for (int i = 0; i < _list.Count; i++)
                     {
@@ -524,12 +527,14 @@ namespace Salvavida
             string? nextId = index < _list.Count ? _list[index]?.SvId : null;
 
             Span<char> rankBuffer = stackalloc char[128];
-            int rankLen = FakeLexoRank.BetweenSpan(prevId, nextId, rankBuffer);
+            int rankLen = LexoRank.Generate(
+                prevId.AsSpan(), nextId.AsSpan(),
+                DEFAULT_PRECISION_DIGITS, rankBuffer);
             item.SvId = new string(rankBuffer.Slice(0, rankLen));
 
             var lexoPart = item.SvId.AsSpan();
             int sepIdx = lexoPart.IndexOf('~');
-            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > FakeLexoRank.REBALANCE_LENGTH_THRESHOLD)
+            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > REBALANCE_LENGTH_THRESHOLD)
                 _needsRebalance = true;
 
             _list.Insert(index, item);
@@ -548,7 +553,9 @@ namespace Salvavida
                 var item = collection[i];
                 string? prevId = (index + i) > 0 ? _list[index + i - 1]?.SvId : null;
                 string? nextId = (index + i + 1) < _list.Count ? _list[index + i + 1]?.SvId : null;
-                int rankLen = FakeLexoRank.BetweenSpan(prevId, nextId, rankBuffer);
+                int rankLen = LexoRank.Generate(
+                    prevId.AsSpan(), nextId.AsSpan(),
+                    DEFAULT_PRECISION_DIGITS, rankBuffer);
                 item.SvId = new string(rankBuffer.Slice(0, rankLen));
                 OnItemSet(item, i + index);
             }

@@ -1,6 +1,5 @@
 using Salvavida.DefaultImpl;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -14,6 +13,8 @@ namespace Salvavida
         where T : ISavable
     {
         #region Configuration
+
+        private const int REBALANCE_LENGTH_THRESHOLD = 10;
 
         private readonly int _pageSize;
         private readonly int _maxCachedPages;
@@ -216,7 +217,7 @@ namespace Salvavida
             if (_bucketCumulativeIndex.Length == 0)
             {
                 // No buckets yet — all elements in default bucket "A"
-                return (FakeLexoRank.DEFAULT_PREFIX, elementIndex);
+                return ("0", elementIndex);
             }
 
             // Binary search for the bucket
@@ -233,6 +234,11 @@ namespace Salvavida
         {
             var (bucketId, skipCount) = FindBucketForIndex(pageIndex * _pageSize);
             return _serializer!.ListCollectionIds(_context!, _svid!, bucketId, skipCount, _pageSize);
+        }
+
+        private int GetPrecisionDigits()
+        {
+            return LexoRank.CalculatePrecisionDigits(_pageSize * _bucketMultiplier);
         }
 
         private string? GetElementRank(int index)
@@ -338,7 +344,8 @@ namespace Salvavida
                 var page = GetOrLoadPage(pageIndex);
 
                 string? prevId = GetElementRank(_totalElementCount - 1);
-                item.SvId = FakeLexoRank.Between(prevId, null);
+                int precision = GetPrecisionDigits();
+                item.SvId = LexoRank.Generate(prevId, null, precision);
 
                 page.Elements.Add(item);
                 page.IsDirty = true;
@@ -412,8 +419,8 @@ namespace Salvavida
             {
                 string? prevId = GetElementRank(index - 1);
                 string? nextId = GetElementRank(index);
-
-                item.SvId = FakeLexoRank.Between(prevId, nextId);
+                int precision = GetPrecisionDigits();
+                item.SvId = LexoRank.Generate(prevId, nextId, precision);
 
                 int targetPageIdx = index / _pageSize;
                 var page = GetOrLoadPage(targetPageIdx);
@@ -437,7 +444,7 @@ namespace Salvavida
                 _hasPendingWrites = true;
 
                 var rankParts = item.SvId.Split('~');
-                if (rankParts.Length == 2 && rankParts[1].Length > FakeLexoRank.REBALANCE_LENGTH_THRESHOLD)
+                if (rankParts.Length == 3 && rankParts[2].Length > REBALANCE_LENGTH_THRESHOLD)
                     _needsRebalance = true;
 
                 OnItemSet(item, index);
@@ -632,18 +639,7 @@ namespace Salvavida
 
         private string IncrementBase62(string value)
         {
-            var chars = value.ToCharArray();
-            for (int i = chars.Length - 1; i >= 0; i--)
-            {
-                int idx = Array.IndexOf(FakeLexoRank.CHARSET.ToCharArray(), chars[i]);
-                if (idx < FakeLexoRank.CHARSET.Length - 1)
-                {
-                    chars[i] = FakeLexoRank.CHARSET[idx + 1];
-                    return new string(chars);
-                }
-                chars[i] = FakeLexoRank.CHARSET[0];
-            }
-            return FakeLexoRank.CHARSET[1] + new string(chars);
+            throw new System.NotImplementedException();
         }
 
         private int[] RecomputeCumulativeIndex()
@@ -772,7 +768,7 @@ namespace Salvavida
                     var elem = page.Elements[i % _pageSize];
                     if (elem != null)
                     {
-                        elem.SvId = FakeLexoRank.DEFAULT_PREFIX + "~" + newRanks[i];
+                        elem.SvId = "0~" + newRanks[i];
                         serializer.Save(elem, ctx, PathBuilder.Type.Collection);
                     }
                 }
