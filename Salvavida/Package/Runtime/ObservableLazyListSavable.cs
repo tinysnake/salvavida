@@ -664,32 +664,10 @@ namespace Salvavida
                     int startIdx = i > 0 ? _bucketCumulativeIndex[i - 1] : 0;
                     int endIdx = _bucketCumulativeIndex[i];
                     int midIdx = startIdx + (endIdx - startIdx) / 2;
+                    SplitBucket(startIdx, midIdx, bucketSize, serializer, ctx);
+                    SplitBucket(midIdx, endIdx, bucketSize, serializer, ctx);
+
                     string newPrefix = GetNextBucketPrefix();
-
-                    var firstHalfRanks = FakeLexoRank.Rebalance(midIdx - startIdx);
-                    for (int j = startIdx; j < midIdx; j++)
-                    {
-                        var page = GetOrLoadPage(j / _pageSize);
-                        var elem = page.Elements[j % _pageSize];
-                        if (elem != null)
-                        {
-                            elem.SvId = _bucketMetas[i].BucketId + "~" + firstHalfRanks[j - startIdx];
-                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
-                        }
-                    }
-
-                    var secondHalfRanks = FakeLexoRank.Rebalance(endIdx - midIdx);
-                    for (int j = midIdx; j < endIdx; j++)
-                    {
-                        var page = GetOrLoadPage(j / _pageSize);
-                        var elem = page.Elements[j % _pageSize];
-                        if (elem != null)
-                        {
-                            elem.SvId = newPrefix + "~" + secondHalfRanks[j - midIdx];
-                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
-                        }
-                    }
-
                     var newMetas = new BucketMeta[_bucketMetas.Length + 1];
                     int ni = 0;
                     for (int mi = 0; mi < _bucketMetas.Length; mi++)
@@ -712,6 +690,39 @@ namespace Salvavida
             _needsBucketSplit = false;
         }
 
+        private void SplitBucket(int startIdx, int endIdx, int bucketSize, Serializer serializer, SerializeContext ctx)
+        {
+            int count = endIdx - startIdx;
+            var firstPage = GetOrLoadPage(startIdx / _pageSize);
+            string? curRank = null;
+            for (var n = startIdx; n < endIdx; n++)
+            {
+                curRank = firstPage.Elements[n % _pageSize]?.SvId;
+                if (!string.IsNullOrEmpty(curRank))
+                    break;
+            }
+            if (string.IsNullOrEmpty(curRank))
+                curRank = LexoRank.GetInitValue(bucketSize);
+            var startRank = LexoRank.Rebalance(curRank, Math.Max(bucketSize, count), false, out int firstStep, out _);
+            Span<char> rankBuffer = stackalloc char[128];
+            int firstPrecision = LexoRank.CalculatePrecisionDigits(count);
+            for (int j = startIdx; j < endIdx; j++)
+            {
+                var page = GetOrLoadPage(j / _pageSize);
+                var elem = page.Elements[j % _pageSize];
+                if (elem != null)
+                {
+                    elem.SvId = startRank;
+                    serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                }
+                if (j < endIdx - 1)
+                {
+                    int len = LexoRank.GenNext(startRank, firstPrecision, rankBuffer, firstStep);
+                    startRank = new string(rankBuffer.Slice(0, len));
+                }
+            }
+        }
+
         private void PerformBucketMerge(Serializer serializer, SerializeContext ctx)
         {
             for (int i = 0; i < _bucketMetas.Length - 1; i++)
@@ -724,15 +735,35 @@ namespace Salvavida
                     int endIdx = _bucketCumulativeIndex[i + 1];
                     string mergePrefix = _bucketMetas[i].BucketId;
 
-                    var newRanks = FakeLexoRank.Rebalance(endIdx - startIdx);
+                    int mergeCount = endIdx - startIdx;
+                    var mergePage = GetOrLoadPage(startIdx / _pageSize);
+                    var mergeElem = mergePage.Elements[startIdx % _pageSize];
+                    string? mergeCurrentRank = null;
+                    for (var n = startIdx; n < endIdx; n++)
+                    {
+                        mergeCurrentRank = mergePage.Elements[n % _pageSize]?.SvId;
+                        if (!string.IsNullOrEmpty(mergeCurrentRank))
+                            break;
+                    }
+                    if (string.IsNullOrEmpty(mergeCurrentRank))
+                        mergeCurrentRank = LexoRank.GetInitValue(bucketSize);
+                    var mergeStartRank = LexoRank.Rebalance(mergeCurrentRank, mergeCount, false, out int mergeStep, out _);
+                    Span<char> mergeRankBuffer = stackalloc char[128];
+                    string mergeRank = mergeStartRank;
+                    int mergePrecision = LexoRank.CalculatePrecisionDigits(mergeCount);
                     for (int j = startIdx; j < endIdx; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
                         var elem = page.Elements[j % _pageSize];
                         if (elem != null)
                         {
-                            elem.SvId = mergePrefix + "~" + newRanks[j - startIdx];
+                            elem.SvId = mergeRank;
                             serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        }
+                        if (j < endIdx - 1)
+                        {
+                            int len = LexoRank.GenNext(mergeRank, mergePrecision, mergeRankBuffer, mergeStep);
+                            mergeRank = new string(mergeRankBuffer.Slice(0, len));
                         }
                     }
 
@@ -761,15 +792,24 @@ namespace Salvavida
         {
             if (_bucketMetas.Length == 0)
             {
-                var newRanks = FakeLexoRank.Rebalance(_totalElementCount);
+                var currentRank = GetElementRank(0) ?? LexoRank.GetInitValue(_pageSize * _bucketMultiplier);
+                var startRank = LexoRank.Rebalance(currentRank, _totalElementCount, false, out int step, out bool reverseOrder);
+                Span<char> rankBuffer = stackalloc char[128];
+                string rank = startRank;
+                int precision = LexoRank.CalculatePrecisionDigits(_totalElementCount);
                 for (int i = 0; i < _totalElementCount; i++)
                 {
                     var page = GetOrLoadPage(i / _pageSize);
                     var elem = page.Elements[i % _pageSize];
                     if (elem != null)
                     {
-                        elem.SvId = "0~" + newRanks[i];
+                        elem.SvId = rank;
                         serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                    }
+                    if (i < _totalElementCount - 1)
+                    {
+                        int len = LexoRank.GenNext(rank, precision, rankBuffer, step);
+                        rank = new string(rankBuffer.Slice(0, len));
                     }
                 }
             }
@@ -779,15 +819,33 @@ namespace Salvavida
                 {
                     int startIdx = i > 0 ? _bucketCumulativeIndex[i - 1] : 0;
                     int count = _bucketMetas[i].Count;
-                    var newRanks = FakeLexoRank.Rebalance(count);
+                    var firstPage = GetOrLoadPage(startIdx / _pageSize);
+                    string? curRank = null;
+                    for (var n = startIdx; n < firstPage.Elements.Count; n++)
+                    {
+                        curRank = firstPage.Elements[n % _pageSize]?.SvId;
+                        if (!string.IsNullOrEmpty(curRank))
+                            break;
+                    }
+                    if (string.IsNullOrEmpty(curRank))
+                        curRank = LexoRank.GetInitValue(_pageSize * _bucketMultiplier);
+                    var startRank = LexoRank.Rebalance(curRank, count, false, out int step, out bool reverseOrder);
+                    Span<char> rankBuffer = stackalloc char[128];
+                    string rank = startRank;
+                    int precision = LexoRank.CalculatePrecisionDigits(count);
                     for (int j = startIdx; j < startIdx + count; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
                         var elem = page.Elements[j % _pageSize];
                         if (elem != null)
                         {
-                            elem.SvId = _bucketMetas[i].BucketId + "~" + newRanks[j - startIdx];
+                            elem.SvId = rank;
                             serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        }
+                        if (j < startIdx + count - 1)
+                        {
+                            int len = LexoRank.GenNext(rank, precision, rankBuffer, step);
+                            rank = new string(rankBuffer.Slice(0, len));
                         }
                     }
                 }

@@ -348,15 +348,34 @@ namespace Salvavida
 
             if (_needsRebalance && _list != null)
             {
-                var newRanks = FakeLexoRank.Rebalance(_list.Count);
+                string? currentRank = null;
+                foreach(var item in _list)
+                {
+                    if (item != null && !string.IsNullOrEmpty(item.SvId))
+                    {
+                        currentRank = item.SvId;
+                        break;
+                    }
+                }
+                var precisionDigits = Math.Max(DEFAULT_PRECISION_DIGITS, LexoRank.CalculatePrecisionDigits(_list.Count));
+                if(string.IsNullOrEmpty(currentRank))
+                    currentRank = LexoRank.GetInitValue(precisionDigits);
+                var startRank = LexoRank.Rebalance(currentRank, _list.Count, false, out int step, out bool reverseOrder);
                 var oldIds = SvHelper.idListPool.Get();
+                Span<char> rankBuffer = stackalloc char[128];
                 try
                 {
+                    string rank = startRank;
                     for (int i = 0; i < _list.Count; i++)
                     {
                         if (_list[i] != null && !string.IsNullOrEmpty(_list[i].SvId))
                             oldIds.Add(_list[i].SvId);
-                        _list[i].SvId = "0~" + newRanks[i];
+                        _list[i].SvId = rank;
+                        if (i < _list.Count - 1)
+                        {
+                            int len = LexoRank.GenNext(rank, precisionDigits, rankBuffer, step);
+                            rank = new string(rankBuffer.Slice(0, len));
+                        }
                     }
                     for (int i = 0; i < _list.Count; i++)
                     {
