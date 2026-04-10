@@ -87,6 +87,11 @@ namespace Salvavida
             return null;
         }
 
+        public static void TrySerialize<T>(this T savable, Serializer serializer, SerializeContext ctx, string propName, PathBuilder.Type pathType = PathBuilder.Type.Property)
+        {
+            using var __p = ctx.Path.UsePush(propName, pathType);
+            serializer.SaveNoPushPath(savable, ctx);
+        }
         public static void TrySerialize<T>(this T savable, Serializer serializer, SerializeContext ctx, PathBuilder.Type pathType = PathBuilder.Type.Property) where T : ISavable
         {
             if (!savable.IsDirty)

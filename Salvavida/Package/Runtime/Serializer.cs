@@ -189,7 +189,7 @@ namespace Salvavida
             DoSaveObject(data, type, ctx);
         }
 
-        public void Save<T>(T savable, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
+        public void Save<T>(T? savable, SerializeContext ctx, PathBuilder.Type type) where T : ISavable
         {
             if (savable == null || string.IsNullOrEmpty(savable.SvId))
                 throw new ArgumentNullException(nameof(savable));
@@ -224,8 +224,8 @@ namespace Salvavida
 
         protected virtual void DoSaveObject<T>(T obj, Type type, SerializeContext ctx)
         {
-            if (TryDeleteOnNull(obj, ctx))
-                return;
+            // if (TryDeleteOnNull(obj, ctx))
+            //     return;
 
             try
             {
@@ -290,7 +290,6 @@ namespace Salvavida
                 var ids = metadata?.Ids;
                 if (ids == null)
                 {
-                    src = null;
                     var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
                     if (saveSeparately)
                     {
@@ -345,7 +344,7 @@ namespace Salvavida
 
             if (metadata == null || !metadata.IsLazyLoaded || metadata.Count <= (config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold))
             {
-                var ob = new ObservableListSavable<T>(propName.ToString(), null, saveSeparately);
+                var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
                 if (saveSeparately)
                 {
                     ob.Deserialize(this, ctx);
@@ -532,24 +531,24 @@ namespace Salvavida
         {
             throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
         }
-        private bool TryDeleteOnNull<T>(T obj, SerializeContext ctx)
-        {
-            if (obj == null)
-            {
-                try
-                {
-                    DoDelete(ctx);
-                }
-                catch (Exception ex)
-                {
-                    OnDeleteFailed(ctx, ex);
-                }
+        // private bool TryDeleteOnNull<T>(T obj, SerializeContext ctx)
+        // {
+        //     if (obj == null)
+        //     {
+        //         try
+        //         {
+        //             DoDelete(ctx);
+        //         }
+        //         catch (Exception ex)
+        //         {
+        //             OnDeleteFailed(ctx, ex);
+        //         }
 
-                return true;
-            }
+        //         return true;
+        //     }
 
-            return false;
-        }
+        //     return false;
+        // }
 
         protected virtual void AfterDeserialize<T>(T obj, SerializeContext ctx)
         {

@@ -407,7 +407,9 @@ namespace Salvavida.Generator
                 CollectionType.List => isSavable
                     ? $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>"
                     : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                CollectionType.Dictionary => isSavable
+                    ? $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>"
+                    : $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                 _ => throw new NotSupportedException()
             };
         }
@@ -431,7 +433,9 @@ namespace Salvavida.Generator
                 CollectionType.List => isSavable
                     ? $"ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>"
                     : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                CollectionType.Dictionary => isSavable
+                    ? $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>"
+                    : $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                 _ => throw new NotSupportedException()
             };
         }
@@ -654,7 +658,10 @@ namespace Salvavida.Generator
                 foreach (var prop in _infoStore!.separatedProperties)
                 {
                     var fieldName = GetOriginName(prop);
-                    sb.WriteLine($"{fieldName}?.TrySerialize(serializer, ctx);");
+                    if(_infoStore!.savableMembers.Contains(prop))
+                        sb.WriteLine($"{fieldName}?.TrySerialize(serializer, ctx);");
+                    else
+                        sb.WriteLine($"{fieldName}?.TrySerialize(serializer, ctx, \"{prop}\");");
                 }
 
                 foreach (var name in _infoStore!.separatedCollections)

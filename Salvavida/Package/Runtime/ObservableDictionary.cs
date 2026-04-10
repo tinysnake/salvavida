@@ -420,8 +420,11 @@ namespace Salvavida
             _dict = dict;
             if (_dict != null)
             {
-                foreach (var (_, item) in _dict)
+                var idConverter = SvIdConverter.GetConverter<TKey>() ?? throw new NullReferenceException("cannot find ID converter for key type " + typeof(TKey));
+                foreach (var (key, item) in _dict)
                 {
+                    if (item != null && string.IsNullOrEmpty(item.SvId))
+                        item.SvId = idConverter.ConvertTo(key);
                     if (notifyChanges)
                         TryWatch(item);
                     else

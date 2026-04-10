@@ -134,6 +134,38 @@ namespace Salvavida.Generator
             category: CATEGORY,
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
+        
+        public static readonly DiagnosticDescriptor STJ_PrivateKeywoardRecommended = new(
+            id: "SV300",
+            title: "推荐使用private访问限制符+JsonInclude特性",
+            messageFormat: "推荐使用private访问限制符+JsonInclude特性，避免意外操作数据本体",
+            category: CATEGORY,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor STJ_ForgetJsonIncludeAttribute = new(
+            id: "SV301",
+            title: "你可能忘记在非公开字段中添加JsonInclude特性",
+            messageFormat: "当前字段可能忘记添加JsonInclude特性，如果你本意如此，可使用JsonIgnore特性忽略当前字段",
+            category: CATEGORY,
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor STJ_JsonIgnoreAttributeRequired = new(
+            id: "SV302",
+            title: "公开且标记为SaveSeparately特性的字段需要同时添加JsonIgnore特性",
+            messageFormat: "当前字段被标记为SaveSeparately特性,需要同时添加JsonIgnore特性",
+            category: CATEGORY,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor STJ_HaveToRemoveJsonIncludeAttribute = new(
+            id: "SV303",
+            title: "非公开且被标记为为SaveSeparately特性的字段需要移除JsonInclude特性",
+            messageFormat: "当前字段被标记为SaveSeparately特性,需要将已经添加的JsonInclude特性移除",
+            category: CATEGORY,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 #pragma warning restore RS2008 // Enable analyzer release tracking
 }

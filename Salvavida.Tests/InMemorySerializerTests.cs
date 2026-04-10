@@ -190,7 +190,7 @@ namespace Salvavida.Tests
         public void Storage_IsReadOnly()
         {
             var serializer = new InMemorySerializer();
-            Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(serializer.Storage);
+            Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(serializer.Storage);
         }
 
         #endregion

@@ -12,6 +12,23 @@ namespace Salvavida
     public abstract class ObservableListSavableBase<T> : ObservableCollectionSavable<ObservableListSavableBase<T>, T>, IList<T?>, IReadOnlyList<T?>, IList
         where T : ISavable
     {
+        public readonly struct Slot
+        {
+            public string Id { get;}
+            public T? Value {get;}
+
+            public bool IsDirty {get;}
+
+            public Slot(string id, T? value, bool isDirty)
+            {
+                Id = id;
+                Value = value;
+                IsDirty = isDirty;
+            }
+
+            public static implicit operator T?(Slot slot) => slot.Value;
+        }
+
         protected ObservableListSavableBase(string propName, bool saveSeparately)
             : base(propName, saveSeparately)
         {

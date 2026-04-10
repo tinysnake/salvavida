@@ -367,10 +367,13 @@ namespace Salvavida
             {
                 for (var i = 0; i < _arr.Length; i++)
                 {
+                    var item = _arr[i];
+                    if(item!=null && item.SvId == null)
+                        item.SvId = i.ToString();
                     if (notifyChanges)
-                        TryWatch(_arr[i]);
+                        TryWatch(item);
                     else
-                        OnChildDeserialized(_arr[i]);
+                        OnChildDeserialized(item);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());

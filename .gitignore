@@ -10,5 +10,6 @@ obj/
 .understand-anything/
 
 Salvavida.Benchmarks/BenchmarkDotNet.Artifacts/
+Salvavida.Tests/Generated/
 Salvavida.Generator.Debug/Generated/
 Salvavida.Generator.Debug/salvavida.output.log

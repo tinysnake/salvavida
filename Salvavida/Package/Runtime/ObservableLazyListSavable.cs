@@ -78,12 +78,12 @@ namespace Salvavida
 
         private class PageData
         {
-            public List<T?> Elements;
+            public List<Slot> Elements;
             public bool IsDirty;
 
             public PageData(int pageSize)
             {
-                Elements = new List<T?>(pageSize);
+                Elements = new List<Slot>(pageSize);
                 IsDirty = false;
             }
         }
@@ -103,9 +103,9 @@ namespace Salvavida
                 foreach (var page in _loadedPages.Values)
                 {
                     if (page.IsDirty) return true;
-                    foreach (var elem in page.Elements)
+                    foreach (var slot in page.Elements)
                     {
-                        if (elem?.IsDirty == true) return true;
+                        if (slot.IsDirty || slot.Value?.IsDirty == true) return true;
                     }
                 }
 
@@ -139,8 +139,9 @@ namespace Salvavida
 
             for (int i = 0; i < ids.Length; i++)
             {
-                page.Elements.Add(_serializer!.Read<T?>(_context!, ids[i], PathBuilder.Type.Collection));
-                var elem = page.Elements[i];
+                var id = ids[i];
+                var elem = _serializer!.Read<T?>(_context!, id, PathBuilder.Type.Collection);
+                page.Elements.Add(new Slot(id, elem, false));
                 if (elem != null)
                 {
                     OnChildDeserialized(elem);
@@ -180,9 +181,9 @@ namespace Salvavida
                 if (page.IsDirty)
                     FlushPage(pageIndex, page);
 
-                foreach (var elem in page.Elements)
+                foreach (var slot in page.Elements)
                 {
-                    TryUnWatch(elem);
+                    TryUnWatch(slot.Value);
                 }
 
                 _loadedPages.Remove(pageIndex);
@@ -195,16 +196,16 @@ namespace Salvavida
 
             for (int i = 0; i < page.Elements.Count; i++)
             {
-                var elem = page.Elements[i];
-                if (elem == null)
+                var slot = page.Elements[i];
+                if (slot.Value == null)
                 {
-                    _serializer!.Delete(_context!, elem.SvId ?? _allIds[startIdx + i], PathBuilder.Type.Collection);
+                    _serializer!.Delete(_context!, slot.Id, PathBuilder.Type.Collection);
                 }
                 else
                 {
-                    using (_context!.Path.UsePush(elem.SvId!, PathBuilder.Type.Collection))
+                    using (_context!.Path.UsePush(slot.Id, PathBuilder.Type.Collection))
                     {
-                        elem.Serialize(_serializer!, _context!);
+                        slot.Value.Serialize(_serializer!, _context!);
                     }
                 }
             }
@@ -246,7 +247,7 @@ namespace Salvavida
             if (index < 0 || index >= _totalElementCount) return null;
             var page = GetOrLoadPage(index / _pageSize);
             var localIdx = index % _pageSize;
-            return localIdx < page.Elements.Count ? page.Elements[localIdx]?.SvId : null;
+            return localIdx < page.Elements.Count ? page.Elements[localIdx].Id : null;
         }
 
         private void UpdateBucketCountForIndex(int elementIndex, int delta)
@@ -293,7 +294,7 @@ namespace Salvavida
                     var localIndex = index % _pageSize;
                     var page = GetOrLoadPage(pageIndex);
                     TouchPage(pageIndex);
-                    return page.Elements[localIndex];
+                    return page.Elements[localIndex].Value;
                 }
                 finally
                 {
@@ -312,12 +313,13 @@ namespace Salvavida
                     var localIndex = index % _pageSize;
                     var page = GetOrLoadPage(pageIndex);
 
-                    var oldValue = page.Elements[localIndex];
+                    var oldSlot = page.Elements[localIndex];
+                    var oldValue = oldSlot.Value;
                     if (EqualityComparer<T?>.Default.Equals(oldValue, value))
                         return;
 
                     TryUnWatch(oldValue);
-                    page.Elements[localIndex] = value;
+                    page.Elements[localIndex] = new Slot(oldSlot.Id, value, true);
                     page.IsDirty = true;
                     _hasPendingWrites = true;
                     TryWatch(value);
@@ -347,7 +349,7 @@ namespace Salvavida
                 int precision = GetPrecisionDigits();
                 item.SvId = LexoRank.Generate(prevId, null, precision);
 
-                page.Elements.Add(item);
+                page.Elements.Add(new Slot(item.SvId!, item, true));
                 page.IsDirty = true;
                 _hasPendingWrites = true;
 
@@ -373,14 +375,6 @@ namespace Salvavida
                     foreach (var id in _allIds)
                     {
                         _serializer.Delete(_context, id, PathBuilder.Type.Collection);
-                    }
-                }
-
-                foreach (var page in _loadedPages.Values)
-                {
-                    foreach (var elem in page.Elements)
-                    {
-                        TryUnWatch(elem);
                     }
                 }
 
@@ -426,7 +420,7 @@ namespace Salvavida
                 var page = GetOrLoadPage(targetPageIdx);
 
                 int localIdx = index % _pageSize;
-                page.Elements.Insert(localIdx, item);
+                page.Elements.Insert(localIdx, new Slot(item.SvId!, item, true));
 
                 while (page.Elements.Count > _pageSize)
                 {
@@ -468,10 +462,11 @@ namespace Salvavida
                 var page = GetOrLoadPage(targetPageIdx);
                 int localIdx = index % _pageSize;
 
-                var oldItem = page.Elements[localIdx];
-                var itemRank = oldItem?.SvId;
+                var oldSlot = page.Elements[localIdx];
+                var oldItem = oldSlot.Value;
+                var itemRank = oldSlot.Id;
                 if (!string.IsNullOrEmpty(itemRank))
-                    _idsDeleted.Add(itemRank!);
+                    _idsDeleted.Add(itemRank);
 
                 page.Elements.RemoveAt(localIdx);
                 page.IsDirty = true;
@@ -530,7 +525,7 @@ namespace Salvavida
 
                     for (int i = 0; i < count; i++)
                     {
-                        if (EqualityComparer<T?>.Default.Equals(page.Elements[i], item))
+                        if (EqualityComparer<T?>.Default.Equals(page.Elements[i].Value, item))
                             return startIdx + i;
                     }
                 }
@@ -542,7 +537,7 @@ namespace Salvavida
                     {
                         var page = GetOrLoadPage(pageIndex);
                         var localIndex = i % _pageSize;
-                        if (EqualityComparer<T?>.Default.Equals(page.Elements[localIndex], item))
+                        if (EqualityComparer<T?>.Default.Equals(page.Elements[localIndex].Value, item))
                             return i;
                     }
                 }
@@ -574,9 +569,9 @@ namespace Salvavida
             {
                 foreach (var page in _loadedPages.Values)
                 {
-                    foreach (var elem in page.Elements)
+                    foreach (var slot in page.Elements)
                     {
-                        TryUnWatch(elem);
+                        TryUnWatch(slot.Value);
                     }
                 }
                 _loadedPages.Clear();
@@ -607,7 +602,7 @@ namespace Salvavida
                     int copyCount = Math.Min(_pageSize, _totalElementCount);
                     for (int i = 0; i < copyCount; i++)
                     {
-                        firstPage.Elements[i] = list[i];
+                        firstPage.Elements.Add(new Slot(i.ToString(), list[i], true));
                     }
                     _loadedPages[0] = firstPage;
                     _lruList.AddFirst(0);
@@ -697,7 +692,7 @@ namespace Salvavida
             string? curRank = null;
             for (var n = startIdx; n < endIdx; n++)
             {
-                curRank = firstPage.Elements[n % _pageSize]?.SvId;
+                curRank = firstPage.Elements[n % _pageSize].Id;
                 if (!string.IsNullOrEmpty(curRank))
                     break;
             }
@@ -709,11 +704,11 @@ namespace Salvavida
             for (int j = startIdx; j < endIdx; j++)
             {
                 var page = GetOrLoadPage(j / _pageSize);
-                var elem = page.Elements[j % _pageSize];
-                if (elem != null)
+                var slot = page.Elements[j % _pageSize];
+                if (slot.Value != null)
                 {
-                    elem.SvId = startRank;
-                    serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                    slot.Value.SvId = startRank;
+                    serializer.Save(slot.Value, ctx, PathBuilder.Type.Collection);
                 }
                 if (j < endIdx - 1)
                 {
@@ -737,11 +732,10 @@ namespace Salvavida
 
                     int mergeCount = endIdx - startIdx;
                     var mergePage = GetOrLoadPage(startIdx / _pageSize);
-                    var mergeElem = mergePage.Elements[startIdx % _pageSize];
                     string? mergeCurrentRank = null;
                     for (var n = startIdx; n < endIdx; n++)
                     {
-                        mergeCurrentRank = mergePage.Elements[n % _pageSize]?.SvId;
+                        mergeCurrentRank = mergePage.Elements[n % _pageSize].Id;
                         if (!string.IsNullOrEmpty(mergeCurrentRank))
                             break;
                     }
@@ -754,11 +748,11 @@ namespace Salvavida
                     for (int j = startIdx; j < endIdx; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
-                        var elem = page.Elements[j % _pageSize];
-                        if (elem != null)
+                        var slot = page.Elements[j % _pageSize];
+                        if (slot.Value != null)
                         {
-                            elem.SvId = mergeRank;
-                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                            slot.Value.SvId = mergeRank;
+                            serializer.Save(slot.Value, ctx, PathBuilder.Type.Collection);
                         }
                         if (j < endIdx - 1)
                         {
@@ -800,11 +794,11 @@ namespace Salvavida
                 for (int i = 0; i < _totalElementCount; i++)
                 {
                     var page = GetOrLoadPage(i / _pageSize);
-                    var elem = page.Elements[i % _pageSize];
-                    if (elem != null)
+                    var slot = page.Elements[i % _pageSize];
+                    if (slot.Value != null)
                     {
-                        elem.SvId = rank;
-                        serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                        slot.Value.SvId = rank;
+                        serializer.Save(slot.Value, ctx, PathBuilder.Type.Collection);
                     }
                     if (i < _totalElementCount - 1)
                     {
@@ -823,7 +817,7 @@ namespace Salvavida
                     string? curRank = null;
                     for (var n = startIdx; n < firstPage.Elements.Count; n++)
                     {
-                        curRank = firstPage.Elements[n % _pageSize]?.SvId;
+                        curRank = firstPage.Elements[n % _pageSize].Id;
                         if (!string.IsNullOrEmpty(curRank))
                             break;
                     }
@@ -836,11 +830,11 @@ namespace Salvavida
                     for (int j = startIdx; j < startIdx + count; j++)
                     {
                         var page = GetOrLoadPage(j / _pageSize);
-                        var elem = page.Elements[j % _pageSize];
-                        if (elem != null)
+                        var slot = page.Elements[j % _pageSize];
+                        if (slot.Value != null)
                         {
-                            elem.SvId = rank;
-                            serializer.Save(elem, ctx, PathBuilder.Type.Collection);
+                            slot.Value.SvId = rank;
+                            serializer.Save(slot.Value, ctx, PathBuilder.Type.Collection);
                         }
                         if (j < startIdx + count - 1)
                         {

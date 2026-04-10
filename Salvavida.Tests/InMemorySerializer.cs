@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 
 namespace Salvavida.Tests
 {
@@ -10,12 +11,21 @@ namespace Salvavida.Tests
     /// </summary>
     public class InMemorySerializer : Serializer
     {
-        private readonly Dictionary<string, object?> _storage = new();
+        public InMemorySerializer()
+        {
+            _serializeOptions = new JsonSerializerOptions
+            {
+                IncludeFields = true,
+                IgnoreReadOnlyProperties = true,
+            };
+        }
+        private JsonSerializerOptions _serializeOptions;
+        private readonly Dictionary<string, string?> _storage = new();
 
         /// <summary>
         /// Provides read-only access to the internal storage for test verification.
         /// </summary>
-        public IReadOnlyDictionary<string, object?> Storage => _storage;
+        public IReadOnlyDictionary<string, string?> Storage => _storage;
 
         #region Test Helper Methods
 
@@ -58,7 +68,7 @@ namespace Salvavida.Tests
         protected override void DoSaveObjectImpl<T>(T obj, Type type, SerializeContext ctx)
         {
             var path = ctx.Path.ToString();
-            _storage[path] = obj;
+            _storage[path] = obj == null ? null : JsonSerializer.Serialize(obj, _serializeOptions);
         }
 
         protected override void DoSaveObjectImpl<T>(T obj, SerializeContext ctx)
@@ -71,7 +81,9 @@ namespace Salvavida.Tests
             var path = ctx.Path.ToString();
             if (_storage.TryGetValue(path, out var value))
             {
-                return (T)value!;
+                if(value == null)
+                    return default!;
+                return JsonSerializer.Deserialize<T>(value, _serializeOptions)!;
             }
             return default!;
         }

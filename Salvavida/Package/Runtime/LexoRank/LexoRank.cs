@@ -136,10 +136,14 @@ namespace Salvavida
         /// <param name="bucketId">The bucket ID (default: "0")</param>
         /// <param name="chunkId">The chunk ID (default: "VV")</param>
         /// <returns>The initial rank value with complete format {BucketId}~{ChunkId}~{Rank}</returns>
-        public static string GetInitValue(int precisionDigits, string bucketId = "0", string chunkId = "VV")
+        public static string GetInitValue(int precisionDigits, string? bucketId = null, string? chunkId = null)
         {
             if (precisionDigits <= 0)
                 throw new ArgumentOutOfRangeException(nameof(precisionDigits), "PrecisionDigits must be greater than 0");
+            if (string.IsNullOrEmpty(bucketId))
+                bucketId = "0";
+            if (string.IsNullOrEmpty(chunkId))
+                chunkId = "VV";
 
             // Calculate middle value in Base62
             // 'V' is the middle character (31 in 0-61 range)
