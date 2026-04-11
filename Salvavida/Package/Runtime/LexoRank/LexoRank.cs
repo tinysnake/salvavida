@@ -3,8 +3,8 @@ using System;
 namespace Salvavida
 {
     /// <summary>
-    /// A LexoRank variant implementation using Base62 encoding with Chunk support.
-    /// Format: {BucketId}~{ChunkId}~{Rank}
+    /// A LexoRank variant implementation using Base62 encoding.
+    /// Format: {BucketId}~{Rank}
     /// </summary>
     public static class LexoRank
     {
@@ -55,45 +55,33 @@ namespace Salvavida
         /// </summary>
         /// <param name="lexoRank">The LexoRank string to parse</param>
         /// <param name="bucketId">The bucket ID</param>
-        /// <param name="chunkId">The chunk ID</param>
         /// <param name="rank">The rank value</param>
         public static void Parse(ReadOnlySpan<char> lexoRank,
             out ReadOnlySpan<char> bucketId,
-            out ReadOnlySpan<char> chunkId,
             out ReadOnlySpan<char> rank)
         {
-            var firstSep = lexoRank.IndexOf(SEPARATOR);
-            if (firstSep < 0)
+            var sepIndex = lexoRank.IndexOf(SEPARATOR);
+            if (sepIndex < 0)
                 throw new FormatException($"LexoRank must contain '{SEPARATOR}' separator");
 
-            var remaining = lexoRank[(firstSep + 1)..];
-            var secondSep = remaining.IndexOf(SEPARATOR);
-            if (secondSep < 0)
-                throw new FormatException($"LexoRank must contain two '{SEPARATOR}' separators");
-
-            bucketId = lexoRank[..firstSep];
-            chunkId = remaining[..secondSep];
-            rank = remaining[(secondSep + 1)..];
+            bucketId = lexoRank[..sepIndex];
+            rank = lexoRank[(sepIndex + 1)..];
         }
 
         /// <summary>
         /// Builds a LexoRank string from its components.
         /// </summary>
         /// <param name="bucketId">The bucket ID</param>
-        /// <param name="chunkId">The chunk ID</param>
         /// <param name="rank">The rank value</param>
         /// <returns>A formatted LexoRank string</returns>
-        public static ReadOnlySpan<char> Build(ReadOnlySpan<char> bucketId, ReadOnlySpan<char> chunkId, ReadOnlySpan<char> rank)
+        public static ReadOnlySpan<char> Build(ReadOnlySpan<char> bucketId, ReadOnlySpan<char> rank)
         {
-            var totalLength = bucketId.Length + 1 + chunkId.Length + 1 + rank.Length;
+            var totalLength = bucketId.Length + 1 + rank.Length;
             Span<char> buffer = stackalloc char[totalLength];
 
             var position = 0;
             bucketId.CopyTo(buffer[position..]);
             position += bucketId.Length;
-            buffer[position++] = SEPARATOR;
-            chunkId.CopyTo(buffer[position..]);
-            position += chunkId.Length;
             buffer[position++] = SEPARATOR;
             rank.CopyTo(buffer[position..]);
 
@@ -104,21 +92,18 @@ namespace Salvavida
         /// Builds a LexoRank string from its components.
         /// </summary>
         /// <param name="bucketId">The bucket ID</param>
-        /// <param name="chunkId">The chunk ID</param>
         /// <param name="rank">The rank value</param>
-        /// <returns>A formatted LexoRank string</returns>
-        public static int Build(ReadOnlySpan<char> bucketId, ReadOnlySpan<char> chunkId, ReadOnlySpan<char> rank, Span<char> buffer)
+        /// <param name="buffer">The buffer to write the result</param>
+        /// <returns>The length of the written result</returns>
+        public static int Build(ReadOnlySpan<char> bucketId, ReadOnlySpan<char> rank, Span<char> buffer)
         {
-            var totalLength = bucketId.Length + 1 + chunkId.Length + 1 + rank.Length;
+            var totalLength = bucketId.Length + 1 + rank.Length;
             if(buffer.Length< totalLength)
                 throw new ArgumentException($"Buffer length {buffer.Length} is too small for the result length {totalLength}", nameof(buffer));
 
             var position = 0;
             bucketId.CopyTo(buffer[position..]);
             position += bucketId.Length;
-            buffer[position++] = SEPARATOR;
-            chunkId.CopyTo(buffer[position..]);
-            position += chunkId.Length;
             buffer[position++] = SEPARATOR;
             rank.CopyTo(buffer[position..]);
 
@@ -134,16 +119,13 @@ namespace Salvavida
         /// </summary>
         /// <param name="precisionDigits">The number of digits for precision</param>
         /// <param name="bucketId">The bucket ID (default: "0")</param>
-        /// <param name="chunkId">The chunk ID (default: "VV")</param>
-        /// <returns>The initial rank value with complete format {BucketId}~{ChunkId}~{Rank}</returns>
-        public static string GetInitValue(int precisionDigits, string? bucketId = null, string? chunkId = null)
+        /// <returns>The initial rank value with complete format {BucketId}~{Rank}</returns>
+        public static string GetInitValue(int precisionDigits, string? bucketId = null)
         {
             if (precisionDigits <= 0)
                 throw new ArgumentOutOfRangeException(nameof(precisionDigits), "PrecisionDigits must be greater than 0");
             if (string.IsNullOrEmpty(bucketId))
                 bucketId = "0";
-            if (string.IsNullOrEmpty(chunkId))
-                chunkId = "VV";
 
             // Calculate middle value in Base62
             // 'V' is the middle character (31 in 0-61 range)
@@ -156,7 +138,7 @@ namespace Salvavida
             }
 
             var rank = new string(buffer);
-            return $"{bucketId}~{chunkId}~{rank}";
+            return $"{bucketId}~{rank}";
         }
 
         #endregion
@@ -202,7 +184,7 @@ namespace Salvavida
                 throw new ArgumentOutOfRangeException(nameof(stepSize), "StepSize must be greater than 0");
 
             // Parse the input rank
-            Parse(rank, out var bucketId, out var chunkId, out var rankValue);
+            Parse(rank, out var bucketId, out var rankValue);
 
             // Try to decrement
             Span<char> rankBuffer = stackalloc char[rankValue.Length + 1];
@@ -214,11 +196,11 @@ namespace Salvavida
                 var effectivePrecision = Math.Min(rankValue.Length, precisionDigits);
                 var minValue = GetMinValue(effectivePrecision);
                 length = CalculateMiddle(minValue, rankValue, rankBuffer);
-                return Build(bucketId, chunkId, rankBuffer[..length], buffer);
+                return Build(bucketId, rankBuffer[..length], buffer);
             }
 
             // Build the result
-            var result = Build(bucketId, chunkId, rankBuffer[..length], buffer);
+            var result = Build(bucketId, rankBuffer[..length], buffer);
             return result;
         }
 
@@ -265,7 +247,7 @@ namespace Salvavida
                 throw new ArgumentOutOfRangeException(nameof(stepSize), "StepSize must be greater than 0");
 
             // Parse the input rank
-            Parse(rank, out var bucketId, out var chunkId, out var rankValue);
+            Parse(rank, out var bucketId, out var rankValue);
 
             // Try to increment
             Span<char> rankBuffer = stackalloc char[rankValue.Length + 2];
@@ -277,11 +259,11 @@ namespace Salvavida
                 var effectivePrecision = Math.Max(rankValue.Length, precisionDigits);
                 var maxValue = GetMaxValue(effectivePrecision);
                 length = CalculateMiddle(rankValue, maxValue, rankBuffer);
-                return Build(bucketId, chunkId, rankBuffer[..length], buffer);
+                return Build(bucketId, rankBuffer[..length], buffer);
             }
 
             // Build the result
-            var result = Build(bucketId, chunkId, rankBuffer[..length], buffer);
+            var result = Build(bucketId, rankBuffer[..length], buffer);
             return result;
         }
 
@@ -329,15 +311,13 @@ namespace Salvavida
             if (precisionDigits <= 0)
                 throw new ArgumentOutOfRangeException(nameof(precisionDigits), "PrecisionDigits must be greater than 0");
 
-            // Parse both ranks to get bucket and chunk info
-            Parse(prev, out var prevBucketId, out var prevChunkId, out var prevRank);
-            Parse(next, out var nextBucketId, out var nextChunkId, out var nextRank);
+            // Parse both ranks to get bucket info
+            Parse(prev, out var prevBucketId, out var prevRank);
+            Parse(next, out var nextBucketId, out var nextRank);
 
-            // Validate that bucket and chunk IDs match
+            // Validate that bucket IDs match
             if (!prevBucketId.SequenceEqual(nextBucketId))
                 throw new ArgumentException("BucketId mismatch: prev and next must be in the same bucket");
-            if (!prevChunkId.SequenceEqual(nextChunkId))
-                throw new ArgumentException("ChunkId mismatch: prev and next must be in the same chunk");
 
             // Check if ranks are equal
             if (prevRank.SequenceEqual(nextRank))
@@ -353,7 +333,7 @@ namespace Salvavida
 
             // Build the result
             var fullRank = rankBuffer[..rankLength];
-            var result = Build(prevBucketId, prevChunkId, fullRank, buffer);
+            var result = Build(prevBucketId, fullRank, buffer);
             return result;
         }
 
@@ -368,13 +348,12 @@ namespace Salvavida
         /// <param name="next">The next rank (null for GenNext)</param>
         /// <param name="precisionDigits">The precision digits</param>
         /// <param name="bucketId">The bucket ID (default: "0")</param>
-        /// <param name="chunkId">The chunk ID (default: "VV")</param>
         /// <param name="stepSize">The step size (default: 8)</param>
         /// <returns>A generated rank value</returns>
-        public static string Generate(string? prev, string? next, int precisionDigits, string bucketId = "0", string chunkId = "VV", int stepSize = DEFAULT_STEP_SIZE)
+        public static string Generate(string? prev, string? next, int precisionDigits, string bucketId = "0", int stepSize = DEFAULT_STEP_SIZE)
         {
             if (prev == null && next == null)
-                return GetInitValue(precisionDigits, bucketId, chunkId);
+                return GetInitValue(precisionDigits, bucketId);
 
             if (prev == null)
                 return GenPrev(next!, precisionDigits, stepSize);
@@ -401,14 +380,13 @@ namespace Salvavida
         /// <param name="precisionDigits">The precision digits</param>
         /// <param name="buffer">The buffer to write the result</param>
         /// <param name="bucketId">The bucket ID (default: "0")</param>
-        /// <param name="chunkId">The chunk ID (default: "VV")</param>
         /// <param name="stepSize">The step size (default: 8)</param>
         /// <returns>The length of the written result</returns>
-        public static int Generate(ReadOnlySpan<char> prev, ReadOnlySpan<char> next, int precisionDigits, Span<char> buffer, string bucketId = "0", string chunkId = "VV", int stepSize = DEFAULT_STEP_SIZE)
+        public static int Generate(ReadOnlySpan<char> prev, ReadOnlySpan<char> next, int precisionDigits, Span<char> buffer, string bucketId = "0", int stepSize = DEFAULT_STEP_SIZE)
         {
             if (prev.IsEmpty && next.IsEmpty)
             {
-                var initValue = GetInitValue(precisionDigits, bucketId, chunkId);
+                var initValue = GetInitValue(precisionDigits, bucketId);
                 initValue.AsSpan().CopyTo(buffer);
                 return initValue.Length;
             }
@@ -429,13 +407,12 @@ namespace Salvavida
         /// <summary>
         /// Calculates the starting rank for a rebalanced sequence.
         /// </summary>
-        /// <param name="currentRank">The current rank to derive bucket/chunk from</param>
+        /// <param name="currentRank">The current rank to derive bucket from</param>
         /// <param name="count">Number of items to distribute</param>
-        /// <param name="rebalanceChunk">If true, rebalance chunkId; otherwise rebalance rankValue</param>
         /// <param name="step">The step size between consecutive ranks</param>
         /// <param name="reverseOrder">If true, ranks should be generated in reverse (GenNext) direction</param>
         /// <returns>The starting rank for the rebalanced sequence</returns>
-        public static string Rebalance(string currentRank, int count, bool rebalanceChunk, out int step, out bool reverseOrder)
+        public static string Rebalance(string currentRank, int count, out int step, out bool reverseOrder)
         {
             if (string.IsNullOrEmpty(currentRank))
                 throw new ArgumentNullException(nameof(currentRank));
@@ -446,49 +423,24 @@ namespace Salvavida
             long totalCapacity = (long)Math.Pow(BASE, precisionDigits);
             step = (int)(totalCapacity / (count + 1));
 
-            Parse(currentRank.AsSpan(), out var bucketId, out var chunkId, out var rankValue);
+            Parse(currentRank.AsSpan(), out var bucketId, out var rankValue);
 
-            if (rebalanceChunk)
+            long offset = (long)count * step / 2;
+
+            Span<char> initBuffer = stackalloc char[precisionDigits];
+            for (int i = 0; i < precisionDigits; i++)
+                initBuffer[i] = 'V';
+
+            Span<char> rankBuffer = stackalloc char[initBuffer.Length + 2];
+            var length = DecrementRank(initBuffer, (int)offset, precisionDigits, rankBuffer, out var underflow);
+            if (underflow)
             {
-                long offset = (long)count * step / 2;
-
-                Span<char> initBuffer = stackalloc char[precisionDigits];
-                for (int i = 0; i < precisionDigits; i++)
-                    initBuffer[i] = 'V';
-
-                Span<char> chunkBuffer = stackalloc char[initBuffer.Length + 2];
-                var length = IncrementRank(initBuffer, (int)offset, precisionDigits, chunkBuffer, out var overflow);
-                if (overflow)
-                {
-                    var maxVal = GetMaxValue(precisionDigits);
-                    length = CalculateMiddle(initBuffer, maxVal.AsSpan(), chunkBuffer);
-                }
-
-                reverseOrder = true;
-                int totalLen = bucketId.Length + 1 + length + 1 + rankValue.Length;
-                Span<char> rankBuffer = stackalloc char[totalLen];
-                Build(bucketId, chunkBuffer[..length], rankValue, rankBuffer);
-                return new string(rankBuffer.Slice(0, totalLen));
+                var minVal = GetMinValue(precisionDigits);
+                length = CalculateMiddle(minVal.AsSpan(), initBuffer, rankBuffer);
             }
-            else
-            {
-                long offset = (long)count * step / 2;
 
-                Span<char> initBuffer = stackalloc char[precisionDigits];
-                for (int i = 0; i < precisionDigits; i++)
-                    initBuffer[i] = 'V';
-
-                Span<char> rankBuffer = stackalloc char[initBuffer.Length + 2];
-                var length = DecrementRank(initBuffer, (int)offset, precisionDigits, rankBuffer, out var underflow);
-                if (underflow)
-                {
-                    var minVal = GetMinValue(precisionDigits);
-                    length = CalculateMiddle(minVal.AsSpan(), initBuffer, rankBuffer);
-                }
-
-                reverseOrder = false;
-                return Build(bucketId, chunkId, rankBuffer[..length]).ToString();
-            }
+            reverseOrder = false;
+            return Build(bucketId, rankBuffer[..length]).ToString();
         }
 
         #endregion
