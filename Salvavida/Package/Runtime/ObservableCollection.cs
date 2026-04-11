@@ -126,6 +126,25 @@ namespace Salvavida
         where TCol : ObservableCollectionSavable<TCol, TElem>
         where TElem : ISavable?
     {
+        public readonly struct Slot
+        {
+            public string Id { get;}
+            public TElem? Value {get;}
+
+            public bool IsDirty {get;}
+
+            public Slot(string id, TElem? value, bool isDirty)
+            {
+                Id = id;
+                Value = value;
+                IsDirty = isDirty;
+            }
+
+            public bool IsTrueDirty => IsDirty || (Value != null && Value.IsDirty);
+
+            public static implicit operator TElem?(Slot slot) => slot.Value;
+        }
+
         protected ObservableCollectionSavable(string svid, bool saveSeparately) : base(svid, saveSeparately)
         {
         }

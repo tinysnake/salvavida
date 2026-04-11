@@ -75,6 +75,14 @@ namespace Salvavida
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         #endregion
+
+        protected static string GetPaddedIndex(int index, int totalCount)
+        {
+            var paddingLength = index / totalCount;
+            if(index % totalCount > 0)
+                paddingLength++;
+            return index.ToString($"D{paddingLength}"); // Pad to the required number of digits for proper lexicographical ordering
+        }
     }
 
     /// <summary>

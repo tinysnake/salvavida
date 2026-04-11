@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -81,7 +82,7 @@ namespace Salvavida.Tests
             var path = ctx.Path.ToString();
             if (_storage.TryGetValue(path, out var value))
             {
-                if(value == null)
+                if (value == null)
                     return default!;
                 return JsonSerializer.Deserialize<T>(value, _serializeOptions)!;
             }
@@ -113,30 +114,63 @@ namespace Salvavida.Tests
             }
         }
 
-        public override IEnumerable<string> ListCollectionIds(SerializeContext ctx, string propName)
+        public override IEnumerable<string> ListCollectionIds(SerializeContext ctx)
         {
-            var basePath = ctx.Path.ToString();
-            var collectionPath = $"{basePath}.{propName}";
+            var basePath = ctx.Path.ToString() + "/";
 
             return _storage.Keys
-                .Where(key => key.StartsWith(collectionPath + "/"))
-                .Select(key =>
-                {
-                    var relative = key.Substring(collectionPath.Length + 1);
-                    var slashIndex = relative.IndexOf('/');
-                    return slashIndex < 0 ? relative : relative.Substring(0, slashIndex);
-                })
+                .Where(key => key.AsSpan().StartsWith(basePath.AsSpan(), StringComparison.Ordinal))
+                .Select(key => key[basePath.Length..])
+                .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
                 .Distinct()
-                .OrderBy(id => id)
-                .ToList();
+                .OrderBy(id => id);
         }
 
-        public override string[] ListCollectionIds(
-            SerializeContext ctx, string propName, string? bucketId, int skipCount, int pageSize)
+        public override IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix, int skipCount, int pageSize)
         {
-            // For simplicity, ignore bucketId and just implement pagination
-            var allIds = ListCollectionIds(ctx, propName);
-            return allIds.Skip(skipCount).Take(pageSize).ToArray();
+            var basePath = ctx.Path.ToString() + "/";
+            return _storage.Keys
+                .Where(key => key.AsSpan().StartsWith(basePath.AsSpan(), StringComparison.Ordinal))
+                .Select(key => key[basePath.Length..])
+                .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
+                .Where(key=>string.Compare(key, prefix, StringComparison.Ordinal) >= 0)
+                .Distinct()
+                .OrderBy(id => id);
+        }
+
+        public override IEnumerable<string> ListCollectionIds(
+            SerializeContext ctx, int skipCount, int pageSize)
+        {
+            var basePath = ctx.Path.ToString() + "/";
+            var pathSpan = ctx.Path.AsSpan();
+            var prefixLen = 2;
+            var prefixPathArray = new char[prefixLen];
+            var prefixPath = prefixPathArray.AsSpan();
+            "0~".CopyTo(prefixPath);
+
+            return _storage.Keys
+                .Where(key =>
+                {
+                    var keySpan = key.AsSpan();
+                    if (!keySpan.StartsWith(basePath.AsSpan(), StringComparison.Ordinal))
+                        return false;
+                    keySpan = keySpan[basePath.Length..];
+                    var prefixSpan = prefixPathArray.AsSpan();
+                    prefixSpan[0] = '0';
+                    if (keySpan.StartsWith(prefixSpan, StringComparison.Ordinal))
+                        return true;
+                    prefixSpan[0] = '1';
+                    if (keySpan.StartsWith(prefixSpan, StringComparison.Ordinal))
+                        return true;
+                    prefixSpan[0] = '2';
+                    if (keySpan.StartsWith(prefixSpan, StringComparison.Ordinal))
+                        return true;
+                    return false;
+                })
+                .Select(key => key[basePath.Length..])
+                .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
+                .Distinct()
+                .OrderBy(id => id);
         }
 
         #endregion

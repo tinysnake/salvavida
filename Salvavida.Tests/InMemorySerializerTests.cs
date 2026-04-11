@@ -151,6 +151,60 @@ namespace Salvavida.Tests
         }
 
         [Fact]
+        public void ListCollectionIds_LexoRank_ReturnsOrderedIds()
+        {
+            var serializer = new InMemorySerializer();
+
+            using var locker = serializer.BeginFreshAction(out var ctx);
+            // Save collection items with parent path
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~A~V3", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value3", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~A~V1", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value1", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("1~A~V4", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value4", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~A~V2", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value2", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~B~V2", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value2b", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("1~B~V4", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value4b", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            var ids = serializer.ListCollectionIds(ctx, "items", 0, 10);
+
+            var idList = new System.Collections.Generic.List<string>(ids);
+            Assert.Equal(4, idList.Count);
+            Assert.Equal("0~A~V1", idList[0]);
+            Assert.Equal("0~A~V2", idList[1]);
+            Assert.Equal("0~A~V3", idList[2]);
+            Assert.Equal("1~A~V4", idList[3]);
+        }
+
+        [Fact]
         public void ListCollectionIds_EmptyCollection_ReturnsEmpty()
         {
             var serializer = new InMemorySerializer();

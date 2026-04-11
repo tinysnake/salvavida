@@ -25,6 +25,8 @@ namespace Salvavida
         /// </summary>
         public int MaxCachedPages { get; set; } = 10;
 
+        public int ChunkMultiplier { get; set; } = 10;
+
         /// <summary>
         /// Cache eviction strategy.
         /// Default: LRU

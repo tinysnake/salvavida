@@ -219,9 +219,9 @@ namespace Salvavida.Tests
             var serializer = new InMemorySerializer();
             var testObj = new ComplexSavableTestClass();
 
-            testObj.SetSeparatelySavedSavableCustomDataArray([new SavableCustomData { SavableId = 1, SavableName = "data1" }, new SavableCustomData { SavableId = 2, SavableName = "data2" }]);
-            testObj.SetSeparatelySavedSavableCustomDataList([new SavableCustomData { SavableId = 1, SavableName = "data1" }, new SavableCustomData { SavableId = 2, SavableName = "data2" }]);
-            testObj.SetSeparatelySavedSavableCustomDataDict(new Dictionary<string, SavableCustomData> { ["key1"] = new SavableCustomData { SavableId = 1, SavableName = "data1" }, ["key2"] = new SavableCustomData { SavableId = 2, SavableName = "data2" } });
+            testObj.SetSeparatelySavedSavableCustomDataArray([new SavableCustomData { SavableId = 1, SavableName = "data1" }, null, new SavableCustomData { SavableId = 2, SavableName = "data2" }]);
+            testObj.SetSeparatelySavedSavableCustomDataList([new SavableCustomData { SavableId = 1, SavableName = "data1" }, null, new SavableCustomData { SavableId = 2, SavableName = "data2" }]);
+            testObj.SetSeparatelySavedSavableCustomDataDict(new Dictionary<string, SavableCustomData?> { ["key1"] = new SavableCustomData { SavableId = 1, SavableName = "data1" }, ["key2"] = null, ["key3"] = new SavableCustomData { SavableId = 2, SavableName = "data2" } });
 
             using var locker = serializer.BeginFreshAction(out var ctx);
             ctx.Path.Push("testObj", PathBuilder.Type.Property);
@@ -232,8 +232,23 @@ namespace Salvavida.Tests
             ctx.Path.Push("testObj", PathBuilder.Type.Property);
             var result = serializer.ReadNoPushPath<ComplexSavableTestClass>(ctx);
             Assert.NotNull(result);
+
             Assert.NotNull(result.SeparatelySavedSavableCustomDataArray);
+            Assert.Equal(3, result.SeparatelySavedSavableCustomDataArray.Count);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArray[0]!.SavableId, result.SeparatelySavedSavableCustomDataArray[0]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArray[0]!.SavableName, result.SeparatelySavedSavableCustomDataArray[0]!.SavableName);
+            Assert.Null(result.SeparatelySavedSavableCustomDataArray[1]);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArray[2]!.SavableId, result.SeparatelySavedSavableCustomDataArray[2]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArray[2]!.SavableName, result.SeparatelySavedSavableCustomDataArray[2]!.SavableName);
+
             Assert.NotNull(result.SeparatelySavedSavableCustomDataList);
+            Assert.Equal(3, result.SeparatelySavedSavableCustomDataList.Count);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataList[0]!.SavableId, result.SeparatelySavedSavableCustomDataList[0]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataList[0]!.SavableName, result.SeparatelySavedSavableCustomDataList[0]!.SavableName);
+            Assert.Null(result.SeparatelySavedSavableCustomDataList[1]);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataList[2]!.SavableId, result.SeparatelySavedSavableCustomDataList[2]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataList[2]!.SavableName, result.SeparatelySavedSavableCustomDataList[2]!.SavableName);
+
             Assert.NotNull(result.SeparatelySavedSavableCustomDataDict);
         }
     }

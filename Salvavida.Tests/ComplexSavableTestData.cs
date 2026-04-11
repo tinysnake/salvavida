@@ -55,9 +55,9 @@ namespace Salvavida.Tests
         public List<float> floatList;
         public List<bool> boolList;
         public List<string> stringList;
-        public List<CustomData> customDataList;
+        public List<CustomData?> customDataList;
 
-        public List<SavableCustomData> savableCustomDataList;
+        public List<SavableCustomData?> savableCustomDataList;
 
         // 标记[SaveSeparately]的 List<基础类型> 字段
         [SaveSeparately]
@@ -70,11 +70,11 @@ namespace Salvavida.Tests
 
         [SaveSeparately]
         [JsonIgnore]
-        public List<CustomData> separatelySavedCustomDataList;
+        public List<CustomData?> separatelySavedCustomDataList;
 
         [SaveSeparately]
         [JsonIgnore]
-        public List<SavableCustomData> separatelySavedSavableCustomDataList;
+        public List<SavableCustomData?> separatelySavedSavableCustomDataList;
 
         // 基础类型[] 字段
         public int[] intArray;
@@ -82,7 +82,7 @@ namespace Salvavida.Tests
         public bool[] boolArray;
         public string[] stringArray;
         public CustomData[] customDataArray;
-        public SavableCustomData[] savableCustomDataArray;
+        public SavableCustomData?[] savableCustomDataArray;
         
         [SaveSeparately]
         [JsonIgnore]
@@ -98,15 +98,15 @@ namespace Salvavida.Tests
         
         [SaveSeparately]
         [JsonIgnore]
-        public SavableCustomData[] separatelySavedSavableCustomDataArray;
+        public SavableCustomData?[] separatelySavedSavableCustomDataArray;
 
         // Dictionary<string, 基础类型> 字段
         public Dictionary<string, int> intDict;
         public Dictionary<string, float> floatDict;
         public Dictionary<string, bool> boolDict;
         public Dictionary<string, string> stringDict;
-        public Dictionary<string, CustomData> customDataDict;
-        public Dictionary<string, SavableCustomData> savableCustomDataDict;
+        public Dictionary<string, CustomData?> customDataDict;
+        public Dictionary<string, SavableCustomData?> savableCustomDataDict;
 
         // 标记[SaveSeparately]的 Dictionary<string, 基础类型> 字段
         [SaveSeparately]
@@ -120,10 +120,10 @@ namespace Salvavida.Tests
         // Dictionary<string, 自定义类型> 字段
         [SaveSeparately]
         [JsonIgnore]
-        public Dictionary<string, CustomData> separatelySavedCustomDataDict;
+        public Dictionary<string, CustomData?> separatelySavedCustomDataDict;
         
         [SaveSeparately]
         [JsonIgnore]
-        public Dictionary<string, SavableCustomData> separatelySavedSavableCustomDataDict;
+        public Dictionary<string, SavableCustomData?> separatelySavedSavableCustomDataDict;
     }
 }

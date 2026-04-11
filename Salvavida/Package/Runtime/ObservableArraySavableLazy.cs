@@ -1,6 +1,4 @@
-using Salvavida.DefaultImpl;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -11,7 +9,7 @@ namespace Salvavida
     /// Elements are loaded on-demand by page, with optional LRU cache eviction.
     /// Fixed size - no Add/Insert/Remove/Clear operations.
     /// </summary>
-    public sealed class ObservableLazyArraySavable<T> : ObservableArraySavableBase<ObservableLazyArraySavable<T>, T>
+    public sealed class ObservableArraySavableLazy<T> : ObservableArraySavableBase<ObservableArraySavableLazy<T>, T>
         where T : ISavable
     {
         #region Configuration
@@ -24,9 +22,9 @@ namespace Salvavida
 
         #region Page Storage
 
-        private readonly Dictionary<int, PageData> _loadedPages = new();
         private int _totalElementCount;
-        private string[] _allIds = Array.Empty<string>();
+
+        private readonly Dictionary<int, PageData> _loadedPages = new();
 
         #endregion
 
@@ -39,8 +37,7 @@ namespace Salvavida
         #region State Tracking
 
         private bool _hasPendingWrites;
-        private Serializer? _serializer;
-        private SerializeContext? _context;
+        private readonly HashSet<int> _idxDeleted = new();
 
         #endregion
 
@@ -50,9 +47,11 @@ namespace Salvavida
 
         #endregion
 
+        private readonly ISvIdConverter<int> _idConverter = SvIdConverter.GetConverter<int>() ?? throw new NullReferenceException("cannot find idconverter for int.");
+
         #region Constructor
 
-        public ObservableLazyArraySavable(
+        public ObservableArraySavableLazy(
             string propName,
             bool saveSeparately,
             int pageSize,
@@ -96,9 +95,11 @@ namespace Salvavida
                 foreach (var page in _loadedPages.Values)
                 {
                     if (page.IsDirty) return true;
-                    foreach (var elem in page.Elements)
+                    foreach (var item in page.Elements)
                     {
-                        if (elem?.IsDirty == true) return true;
+                        if(item == null)
+                            continue;
+                        if (item.IsDirty) return true;
                     }
                 }
 
@@ -130,16 +131,28 @@ namespace Salvavida
             var page = new PageData(_pageSize);
 
             int startIdx = pageIndex * _pageSize;
+            while (startIdx >= _totalElementCount)
+            {
+                _totalElementCount += _pageSize;
+            }
             int endIdx = Math.Min(startIdx + _pageSize, _totalElementCount);
 
-            for (int i = startIdx; i < endIdx; i++)
+            var serializer = this.GetSerializer() ?? throw new InvalidOperationException("Serializer is not available.");
+            var prefix = GetPaddedIndex(startIdx, _totalElementCount);
+            using var scope = serializer.BeginFreshAction(this, out var ctx);
+             
+            var ids = serializer.ListCollectionIdsPrefix(ctx, prefix, 0, _pageSize);
+            var i = 0;
+            foreach(var id in ids)
             {
-                string id = _allIds[i];
-                page.Elements[i - startIdx] = _serializer!.Read<T?>(_context!, id, PathBuilder.Type.Collection);
-                var elem = page.Elements[i - startIdx];
-                if (elem != null)
+                if(i >= endIdx)
+                    break;
+                var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
+                page.Elements[_idConverter.ConvertFrom(id)] = item;
+                if (item != null)
                 {
-                    OnChildDeserialized(elem);
+                    item.SvId = id;
+                    OnChildDeserialized(item);
                 }
             }
 
@@ -190,21 +203,18 @@ namespace Salvavida
             int startIdx = pageIndex * _pageSize;
             int endIdx = Math.Min(startIdx + _pageSize, _totalElementCount);
 
+            var serializer = this.GetSerializer() ?? throw new InvalidOperationException("Serializer is not available.");
+            using var scope = serializer.BeginFreshAction(out var ctx);
             for (int i = startIdx; i < endIdx; i++)
             {
-                string id = _allIds[i];
                 var elem = page.Elements[i - startIdx];
 
-                if (elem == null)
+                if(elem == null)
+                    continue;
+                var id = string.IsNullOrEmpty(elem.SvId) ? GetPaddedIndex(i, _totalElementCount) : elem.SvId;
                 {
-                    _serializer!.Delete(_context!, id, PathBuilder.Type.Collection);
-                }
-                else
-                {
-                    using (_context!.Path.UsePush(id, PathBuilder.Type.Collection))
-                    {
-                        elem.Serialize(_serializer!, _context!);
-                    }
+                    using var _ = ctx.Path.UsePush(id, PathBuilder.Type.Collection);
+                    elem.Serialize(serializer, ctx);
                 }
             }
 
@@ -252,6 +262,13 @@ namespace Salvavida
                     if (EqualityComparer<T?>.Default.Equals(oldValue, value))
                         return;
 
+                    if(oldValue!=null)
+                        _idxDeleted.Add(index);
+
+                    var svId = index.ToString();
+                    if (value != null)
+                        value.SvId = svId;
+
                     TryUnWatch(oldValue);
                     page.Elements[localIndex] = value;
                     page.IsDirty = true;
@@ -278,39 +295,7 @@ namespace Salvavida
 
         public override int IndexOf(T? item)
         {
-            _rwLock.EnterReadLock();
-            try
-            {
-                foreach (var (pageIndex, page) in _loadedPages)
-                {
-                    int startIdx = pageIndex * _pageSize;
-                    int count = Math.Min(_pageSize, _totalElementCount - startIdx);
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        if (EqualityComparer<T?>.Default.Equals(page.Elements[i], item))
-                            return startIdx + i;
-                    }
-                }
-
-                for (int i = 0; i < _totalElementCount; i++)
-                {
-                    var pageIndex = i / _pageSize;
-                    if (!_loadedPages.ContainsKey(pageIndex))
-                    {
-                        var page = GetOrLoadPage(pageIndex);
-                        var localIndex = i % _pageSize;
-                        if (EqualityComparer<T?>.Default.Equals(page.Elements[localIndex], item))
-                            return i;
-                    }
-                }
-
-                return -1;
-            }
-            finally
-            {
-                _rwLock.ExitReadLock();
-            }
+            throw new NotSupportedException();
         }
 
         public override IEnumerator<T?> GetEnumerator()
@@ -328,6 +313,7 @@ namespace Salvavida
         public override void SwapSource(T?[]? array)
         {
             _rwLock.EnterWriteLock();
+            DangerouslyDeleteOldElements();
             try
             {
                 foreach (var page in _loadedPages.Values)
@@ -342,33 +328,26 @@ namespace Salvavida
 
                 if (array == null)
                 {
-                    _allIds = Array.Empty<string>();
                     _totalElementCount = 0;
                     _hasPendingWrites = false;
                 }
                 else
                 {
                     _totalElementCount = array.Length;
-                    _allIds = new string[_totalElementCount];
 
                     for (int i = 0; i < _totalElementCount; i++)
                     {
-                        _allIds[i] = i.ToString();
                         var item = array[i];
+                        if (item != null)
+                        {
+                            item.SvId = i.ToString();
+                            item.SetDirty(true, true);
+                        }
                         TryWatch(item);
+                        var page = GetOrLoadPage(i / _pageSize);
+                        page.Elements[i % _pageSize] = item;
+                        page.IsDirty = true;
                     }
-
-                    var firstPage = new PageData(_pageSize)
-                    {
-                        IsDirty = true
-                    };
-                    int copyCount = Math.Min(_pageSize, _totalElementCount);
-                    for (int i = 0; i < copyCount; i++)
-                    {
-                        firstPage.Elements[i] = array[i];
-                    }
-                    _loadedPages[0] = firstPage;
-                    _lruList.AddFirst(0);
 
                     _hasPendingWrites = true;
                 }
@@ -386,9 +365,21 @@ namespace Salvavida
 
         #region Serialize / Deserialize
 
+        private void DangerouslyDeleteOldElements()
+        {
+            // This method will only take effect if the collection is parented to a ISavable object that has a working serializer.
+            // Hope this method will not accidentally delete the whole collection, otherwise this method is so so dumb.
+
+            var serializer = this.GetSerializer();
+            if (serializer == null)
+                return;
+
+            serializer.FreshDeleteAll(this);
+        }
+
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
-            if (!SaveSeparately)
+            if (!SaveSeparately && !_hasPendingWrites)
                 return;
 
             _rwLock.EnterWriteLock();
@@ -400,16 +391,9 @@ namespace Salvavida
                         FlushPage(pageIndex, page);
                 }
 
-                var metadata = new CollectionMetadata
-                {
-                    Ids = _allIds,
-                    Count = _totalElementCount,
-                    PageSize = _pageSize,
-                    MaxCachedPages = _maxCachedPages,
-                    CacheStrategy = _cacheStrategy,
-                    IsLazyLoaded = true
-                };
-                serializer.Save(metadata, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection);
+                var metadata = serializer.Read<CollectionMetadata>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                metadata.Count = _totalElementCount;
+                serializer.Save(metadata, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
 
                 _hasPendingWrites = false;
                 _isDirty = false;
@@ -428,21 +412,11 @@ namespace Salvavida
             _rwLock.EnterWriteLock();
             try
             {
-                CollectionMetadata metadata;
-                using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
-                {
-                    metadata = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
-                }
-
-                _allIds = metadata.Ids ?? Array.Empty<string>();
-                _totalElementCount = metadata.Count;
-
-                _serializer = serializer;
-                _context = ctx;
-
                 _loadedPages.Clear();
                 _lruList.Clear();
                 _hasPendingWrites = false;
+                var metadata = serializer.Read<CollectionMetadata>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                _totalElementCount = metadata.Count;
             }
             finally
             {

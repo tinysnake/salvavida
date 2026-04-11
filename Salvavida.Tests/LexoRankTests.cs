@@ -600,6 +600,54 @@ namespace Salvavida.Tests
         }
 
         [Fact]
+        public void Rebalance_RebalanceChunkFalse_ReverseOrderIsFalse()
+        {
+            var currentRank = "0~VV~VV";
+            var result = LexoRank.Rebalance(currentRank, 10, false, out int step, out bool reverseOrder);
+
+            Assert.NotNull(result);
+            Assert.True(step > 0);
+            Assert.False(reverseOrder);
+        }
+
+        [Fact]
+        public void Rebalance_RebalanceChunkTrue_ReverseOrderIsTrue()
+        {
+            var currentRank = "0~VV~VV";
+            var result = LexoRank.Rebalance(currentRank, 10, true, out int step, out bool reverseOrder);
+
+            Assert.NotNull(result);
+            Assert.True(step > 0);
+            Assert.True(reverseOrder);
+        }
+
+        [Fact]
+        public void Rebalance_BucketIdIncreasing_ReverseOrderIsFalse()
+        {
+            var currentRank = "0~VV~VV";
+            var result = LexoRank.Rebalance(currentRank, 10, false, out int step, out bool reverseOrder);
+
+            if (reverseOrder)
+            {
+                Assert.Fail("reverseOrder should be false when bucketId is increasing (0 → 1 → 2)");
+            }
+            Assert.False(reverseOrder);
+        }
+
+        [Fact]
+        public void Rebalance_BucketIdDecreasingToZero_ReverseOrderIsTrue()
+        {
+            var currentRank = "2~VV~VV";
+            var result = LexoRank.Rebalance(currentRank, 10, false, out int step, out bool reverseOrder);
+
+            LexoRank.Parse(result.AsSpan(), out var resultBucketId, out _, out _);
+            if (resultBucketId.SequenceEqual("0".AsSpan()))
+            {
+                Assert.True(reverseOrder, "reverseOrder should be true when bucketId wraps from 2 back to 0");
+            }
+        }
+
+        [Fact]
         public void Rebalance_StepIsConsistent()
         {
             var currentRank = "0~VV~VV";

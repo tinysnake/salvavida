@@ -21,6 +21,8 @@ namespace Salvavida
         /// </summary>
         public static int DefaultMaxCachedPages { get; set; } = 10;
 
+        public static int ChunkMultiplier { get; set; } = 10;
+
         /// <summary>
         /// Default cache eviction strategy.
         /// </summary>

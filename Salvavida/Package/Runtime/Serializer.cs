@@ -278,54 +278,34 @@ namespace Salvavida
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
 
-            CollectionMetadata? metadata = null;
+            CollectionMetadata metadata = default;
             using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
             {
                 if (HasNoPushPath(ctx))
-                    metadata = ReadNoPushPath<CollectionMetadata?>(ctx);
+                    metadata = ReadNoPushPath<CollectionMetadata>(ctx);
             }
 
-            if (metadata == null || !metadata.IsLazyLoaded || metadata.Count <= (config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold))
-            {
-                var ids = metadata?.Ids;
-                if (ids == null)
-                {
-                    var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
-                    if (saveSeparately)
-                    {
-                        ob.Deserialize(this, ctx);
-                        src = ob.RetrieveSource();
-                    }
-                    return ob;
-                }
+            var threshold = config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold;
 
-                src = new T?[ids.Length];
-                for (int i = 0; i < ids.Length; i++)
-                {
-                    src[i] = Read<T?>(ctx, ids[i], PathBuilder.Type.Collection);
-                }
-                var fullCol = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
+            if (metadata.Count <= threshold)
+            {
+                var ob = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
                 if (saveSeparately)
                 {
-                    fullCol.Deserialize(this, ctx);
-                    src = fullCol.RetrieveSource();
+                    ob.Deserialize(this, ctx);
+                    src = ob.RetrieveSource();
                 }
-                return fullCol;
+                return ob;
             }
             else
             {
-                // TODO: lazy loading for arrays (Task 19)
-                var ids = metadata!.Ids;
-                src = new T?[ids!.Length];
-                for (int i = 0; i < ids.Length; i++)
-                {
-                    src[i] = Read<T?>(ctx, ids[i], PathBuilder.Type.Collection);
-                }
-                var fullCol = new ObservableArraySavable<T>(propName.ToString(), src, saveSeparately);
+                var strategy = config?.CacheStrategy ?? GlobalConfig.DefaultCacheStrategy;
+                var pageSize = config?.PageSize ?? GlobalConfig.DefaultPageSize;
+                var maxCachedPages = config?.MaxCachedPages ?? GlobalConfig.DefaultMaxCachedPages;
+                var fullCol = new ObservableArraySavableLazy<T>(propName.ToString(), saveSeparately, pageSize, maxCachedPages, strategy);
                 if (saveSeparately)
                 {
                     fullCol.Deserialize(this, ctx);
-                    src = fullCol.RetrieveSource();
                 }
                 return fullCol;
             }
@@ -335,14 +315,17 @@ namespace Salvavida
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
 
-            CollectionMetadata? metadata = null;
+            CollectionMetadata metadata = default;
             using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Collection))
             {
                 if (HasNoPushPath(ctx))
-                    metadata = ReadNoPushPath<CollectionMetadata?>(ctx);
+                    metadata = ReadNoPushPath<CollectionMetadata>(ctx);
             }
 
-            if (metadata == null || !metadata.IsLazyLoaded || metadata.Count <= (config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold))
+            var threshold = config?.Threshold ?? GlobalConfig.DefaultLazyLoadThreshold;
+
+
+            if (metadata.Count <= threshold)
             {
                 var ob = new ObservableListSavable<T>(propName.ToString(), src, saveSeparately);
                 if (saveSeparately)
@@ -354,12 +337,12 @@ namespace Salvavida
             }
             else
             {
-                int pageSize = config?.PageSize ?? (metadata.PageSize > 0 ? metadata.PageSize : GlobalConfig.DefaultPageSize);
-                int maxCached = config?.MaxCachedPages ?? (metadata.MaxCachedPages > 0 ? metadata.MaxCachedPages : GlobalConfig.DefaultMaxCachedPages);
-                var cacheStrategy = config?.CacheStrategy ?? metadata.CacheStrategy;
+                var strategy = config?.CacheStrategy ?? GlobalConfig.DefaultCacheStrategy;
+                var pageSize = config?.PageSize ?? GlobalConfig.DefaultPageSize;
+                var maxCachedPages = config?.MaxCachedPages ?? GlobalConfig.DefaultMaxCachedPages;
+                var chunkMultiplier = config?.ChunkMultiplier ?? GlobalConfig.ChunkMultiplier;
 
-                src = null;
-                var lazyCol = new ObservableLazyListSavable<T>(propName.ToString(), saveSeparately, pageSize, maxCached, cacheStrategy);
+                var lazyCol = new ObservableListSavableLazy<T>(propName.ToString(), saveSeparately);
                 if (saveSeparately)
                 {
                     lazyCol.Deserialize(this, ctx);
@@ -513,19 +496,39 @@ namespace Salvavida
 
         protected abstract void DoDeleteAll(SerializeContext ctx);
 
+        public IEnumerable<string> ListCollectionIds(SerializeContext ctx, string propName)
+        {
+            using var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            return ListCollectionIds(ctx);
+        }
+
         /// <summary>
         /// Get all ordered IDs under a collection path (lexicographic order = LexoRank order).
-        /// Implementation: scan all child keys under the collection path, exclude __ob_metadata__,
+        /// Implementation: scan all child keys under the collection path
         /// sort lexicographically, and return.
         /// </summary>
-        public abstract IEnumerable<string> ListCollectionIds(SerializeContext ctx, string propName);
+        public abstract IEnumerable<string> ListCollectionIds(SerializeContext ctx);
+
+        public IEnumerable<string> ListCollectionIds(
+            SerializeContext ctx, string propName, int skipCount, int pageSize)
+        {
+            var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            return ListCollectionIds(ctx, skipCount, pageSize);
+        }
 
         /// <summary>
         /// Get a page of IDs starting from a specific bucket.
-        /// Implementation: scan keys matching {bucketId}~*, skip skipCount, collect pageSize.
+        /// Implementation: scan keys matching [0-2]~{chunkId}~*, skip skipCount, collect pageSize.
         /// </summary>
-        public abstract string[] ListCollectionIds(
-            SerializeContext ctx, string propName, string? bucketId, int skipCount, int pageSize);
+        public abstract IEnumerable<string> ListCollectionIds(
+            SerializeContext ctx, int skipCount, int pageSize);
+
+        public IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string propName, string prefix, int skipCount, int pageSize)
+        {
+            var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            return ListCollectionIdsPrefix(ctx, prefix, skipCount, pageSize);
+        }
+        public abstract IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix, int skipCount, int pageSize);
 
         protected virtual void OnDeleteAllFailed(SerializeContext ctx, Exception ex)
         {
