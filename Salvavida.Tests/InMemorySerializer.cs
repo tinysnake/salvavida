@@ -138,9 +138,19 @@ namespace Salvavida.Tests
                 .OrderBy(id => id);
         }
 
-        public override IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string minValue, string maxValue)
+        public override IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string? minValue, string? maxValue)
         {
-            throw new NotImplementedException();
+            var basePath = ctx.Path.ToString() + "/";
+
+            return _storage.Keys
+                .Where(key => key.AsSpan().StartsWith(basePath.AsSpan(), StringComparison.Ordinal))
+                .Select(key => key[basePath.Length..])
+                .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
+                .Where(key=> 
+                    (string.IsNullOrEmpty(minValue) || string.CompareOrdinal(minValue, key) >= 0) &&
+                    (string.IsNullOrEmpty(maxValue) || string.CompareOrdinal(maxValue, key) < 0))
+                .Distinct()
+                .OrderBy(id => id);
         }
 
         #endregion
