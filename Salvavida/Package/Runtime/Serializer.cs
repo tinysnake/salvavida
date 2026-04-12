@@ -383,13 +383,13 @@ namespace Salvavida
         }
         public abstract IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix);
 
-        public IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string propName, string minValue, string maxValue)
+        public IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string propName, string? minValue, string? maxValue)
         {
             var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
             return ListCollectionIdsMinMax(ctx, minValue, maxValue);
         }
 
-        public abstract IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string minValue, string maxValue);
+        public abstract IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string? minValue, string? maxValue);
 
         protected virtual void AfterDeserialize<T>(T obj, SerializeContext ctx)
         {

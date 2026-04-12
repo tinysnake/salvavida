@@ -385,7 +385,19 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine($"if ({fieldName}Ob != null)");
                 sb.WriteLine("    return;");
-                sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
+
+                // Generate different constructor calls based on whether it's lazy-loaded
+                if (isSavable && lazyConfig.Mode != LazyLoadMode.None)
+                {
+                    // Lazy-loaded collection: new Type(propName, saveSeparately, CollectionOptions)
+                    sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\", {(saveSeparately ? "true" : "false")}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode}, BatchLoadCount = {lazyConfig.BatchLoadCount} }});");
+                }
+                else
+                {
+                    // Non-lazy collection: new Type(propName, sourceList, saveSeparately)
+                    sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
+                }
+
                 sb.WriteLine($"WatchCollection<{watchCollectionTypeString}, {elemTypeString}>({fieldName}Ob);");
             }
 
