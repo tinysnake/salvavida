@@ -100,6 +100,198 @@ namespace Salvavida
             savable.Serialize(serializer, ctx);
         }
 
+        public static ObservableArraySavableBase<TElem> LoadCollectionSavableAbstract<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref TElem?[]? src, CollectionOptions config)
+            where T : ISavable
+            where TElem : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+
+            var mode = config.Mode;
+
+            if (mode == LazyLoadMode.None)
+            {
+                var ob = new ObservableArraySavable<TElem>(propName.ToString(), src, saveSeparately);
+                if (saveSeparately)
+                {
+                    ob.Deserialize(serializer, ctx);
+                    src = ob.RetrieveSource();
+                }
+                return ob;
+            }
+            else
+            {
+                var lazyCol = new ObservableArraySavableLazy<TElem>(propName.ToString(), saveSeparately);
+                if (saveSeparately)
+                {
+                    lazyCol.Deserialize(serializer, ctx);
+                }
+                return lazyCol;
+            }
+        }
+
+        public static ObservableArraySavable<TElem> LoadCollectionSavable<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref TElem?[]? src, CollectionOptions config)
+            where T : ISavable
+            where TElem : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableArraySavable<TElem>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+            return ob;
+        }
+
+        public static ObservableArraySavableLazy<TElem> LoadCollectionSavableLazy<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref TElem?[]? src, CollectionOptions config)
+            where T : ISavable
+            where TElem : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var lazyCol = new ObservableArraySavableLazy<TElem>(propName.ToString(), saveSeparately);
+            if (saveSeparately)
+            {
+                lazyCol.Deserialize(serializer, ctx);
+            }
+            return lazyCol;
+        }
+
+        public static ObservableListSavableBase<TElem> LoadCollectionSavableAbstract<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<TElem?>? src, CollectionOptions config)
+            where T : ISavable
+            where TElem : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+
+            var mode = config.Mode;
+
+            if (mode == LazyLoadMode.None)
+            {
+                var ob = new ObservableListSavable<TElem>(propName.ToString(), src, saveSeparately);
+                if (saveSeparately)
+                {
+                    ob.Deserialize(serializer, ctx);
+                    src = ob.RetrieveSource();
+                }
+                return ob;
+            }
+            else
+            {
+                var lazyCol = new ObservableListSavableLazy<TElem>(propName.ToString(), saveSeparately);
+                if (saveSeparately)
+                {
+                    lazyCol.Deserialize(serializer, ctx);
+                }
+                return lazyCol;
+            }
+        }
+
+        public static ObservableListSavable<TElem> LoadCollectionSavable<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<TElem?>? src, CollectionOptions config)
+            where T : ISavable
+            where TElem : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableListSavable<TElem>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+            return ob;
+        }
+
+        public static ObservableListSavableLazy<TElem> LoadCollectionSavableLazy<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<TElem?>? src, CollectionOptions config)
+            where T : ISavable
+            where TElem : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var lazyCol = new ObservableListSavableLazy<TElem>(propName.ToString(), saveSeparately);
+            if (saveSeparately)
+            {
+                lazyCol.Deserialize(serializer, ctx);
+            }
+            return lazyCol;
+        }
+
+        public static ObservableDictionarySavable<TKey, TValue?> LoadCollectionSavableAbstract<T, TKey, TValue>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src, CollectionOptions config)
+            where T : ISavable
+            where TKey : notnull
+            where TValue : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableDictionarySavable<TKey, TValue?>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+
+            return ob;
+        }
+
+        public static ObservableDictionarySavable<TKey, TValue?> LoadCollectionSavable<T, TKey, TValue>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src, CollectionOptions config)
+            where T : ISavable
+            where TKey : notnull
+            where TValue : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableDictionarySavable<TKey, TValue?>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+            return ob;
+        }
+
+        // public static ObservableDictionarySavable<TKey, TValue?> LoadCollectionSavableLazy<T, TKey, TValue>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src, CollectionOptions config)
+        //     where T : ISavable
+        //     where TKey : notnull
+        //     where TValue : ISavable
+        // {
+        //     throw new NotImplementedException();
+        // }
+
+        public static ObservableArray<TElem?> LoadCollection<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref TElem?[]? src) where T : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableArray<TElem?>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+
+            return ob;
+        }
+
+        public static ObservableList<TElem?> LoadCollection<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref List<TElem?>? src) where T : ISavable
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableList<TElem?>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+
+            return ob;
+        }
+
+        public static ObservableDictionary<TKey, TValue?> LoadCollection<T, TKey, TValue>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref Dictionary<TKey, TValue?>? src)
+            where T : ISavable
+            where TKey : notnull
+        {
+            using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
+            var ob = new ObservableDictionary<TKey, TValue?>(propName.ToString(), src, saveSeparately);
+            if (saveSeparately)
+            {
+                ob.Deserialize(serializer, ctx);
+                src = ob.RetrieveSource();
+            }
+
+            return ob;
+        }
+
         public static void TryThrowOnSvIdEmpty<T>(T? sv) where T : ISavable
         {
             if (sv == null)

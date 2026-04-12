@@ -267,12 +267,28 @@ namespace Salvavida.Generator
                     _infoStore!.nonSeparatedCollections.Add(propertyName);
 
                 _infoStore!.savableMembers.Add(propertyName);
-                var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols);
-                var concreteTypeString = GetCollectionConcreteTypeString(collectionType, elemTypeSymbols);
+
+                // Parse LazyLoadAttribute
+                LazyLoadConfig lazyConfig = default;
+                if (lazyLoadAttr != null)
+                {
+                    foreach (var namedArg in lazyLoadAttr.NamedArguments)
+                    {
+                        if (namedArg.Key == "Mode")
+                            lazyConfig.Mode = (LazyLoadMode)(int)namedArg.Value.Value!;
+                        else if (namedArg.Key == "UseAbstractType")
+                            lazyConfig.UseAbstractType = (bool)namedArg.Value.Value!;
+                    }
+                }
+                _infoStore!.lazyLoadConfigs[fieldName] = lazyConfig;
+
+                var collectionTypeString = GetCollectionTypeString(collectionType, elemTypeSymbols, lazyConfig);
+                var concreteTypeString = GetCollectionConcreteTypeString(collectionType, elemTypeSymbols, lazyConfig);
+                var watchCollectionTypeString = GetWatchCollectionTypeString(collectionType, elemTypeSymbols);
                 var elemTypeString = elemTypeSymbols.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
                 var isSavable = IsTypeISavable(elemTypeSymbols.Last());
                 WriteCollectionProperty(sb, ctx, propertyName, fieldName,
-                    typeSymbol, collectionTypeString, concreteTypeString, elemTypeString, saveSeparately, isSavable, lazyLoadAttr);
+                    typeSymbol, collectionTypeString, concreteTypeString, watchCollectionTypeString, elemTypeString, saveSeparately, isSavable, lazyConfig);
             }
         }
 
@@ -321,36 +337,8 @@ namespace Salvavida.Generator
         }
 
         protected virtual void WriteCollectionProperty(ScriptBuilder sb, CodeGenerationContext ctx, string propertyName, string fieldName,
-            ITypeSymbol typeSymbol, string collectionTypeString, string concreteTypeString, string elemTypeString, bool saveSeparately, bool isSavable, AttributeData? lazyLoadAttr)
+            ITypeSymbol typeSymbol, string collectionTypeString, string concreteTypeString, string watchCollectionTypeString, string elemTypeString, bool saveSeparately, bool isSavable, LazyLoadConfig lazyConfig)
         {
-            if (lazyLoadAttr != null && isSavable)
-            {
-                int threshold = 1000;
-                int pageSize = 100;
-                int maxCachedPages = 10;
-                string cacheStrategy = "LRU";
-
-                foreach (var namedArg in lazyLoadAttr.NamedArguments)
-                {
-                    switch (namedArg.Key)
-                    {
-                        case "Threshold": threshold = (int)namedArg.Value.Value!; break;
-                        case "PageSize": pageSize = (int)namedArg.Value.Value!; break;
-                        case "MaxCachedPages": maxCachedPages = (int)namedArg.Value.Value!; break;
-                        case "CacheStrategy": cacheStrategy = namedArg.Value.Value!.ToString()!; break;
-                    }
-                }
-
-                sb.WriteLine($"private static readonly LazyLoadConfig s_{fieldName}Config = new LazyLoadConfig");
-                sb.WriteLine("{");
-                sb.WriteLine($"    Threshold = {threshold},");
-                sb.WriteLine($"    PageSize = {pageSize},");
-                sb.WriteLine($"    MaxCachedPages = {maxCachedPages},");
-                sb.WriteLine($"    CacheStrategy = CacheStrategy.{cacheStrategy}");
-                sb.WriteLine("};");
-                sb.WriteLine();
-            }
-
             AddAttributePreventSerialize(sb, false);
             sb.WriteLine($"private {collectionTypeString} {fieldName}Ob;");
             AddAttributePreventSerialize(sb, false);
@@ -382,13 +370,13 @@ namespace Salvavida.Generator
                 sb.WriteLine($"if ({fieldName}Ob != null)");
                 sb.WriteLine("    return;");
                 sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\",{fieldName}, {(saveSeparately ? "true" : "false")});");
-                sb.WriteLine($"WatchCollection<{collectionTypeString}, {elemTypeString}>({fieldName}Ob);");
+                sb.WriteLine($"WatchCollection<{watchCollectionTypeString}, {elemTypeString}>({fieldName}Ob);");
             }
 
             sb.WriteLine();
         }
 
-        protected string GetCollectionTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols)
+        protected string GetCollectionTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols, LazyLoadConfig lazyConfig)
         {
             var format = SymbolDisplayFormat.FullyQualifiedFormat;
             var typeIndex = colType switch
@@ -399,22 +387,54 @@ namespace Salvavida.Generator
             };
             var isSavable = IsTypeISavable(typeSymbols[typeIndex]);
 
-            return colType switch
+            if (!isSavable)
             {
-                CollectionType.Array => isSavable
-                    ? $"ObservableArraySavableBase<{typeSymbols[0].ToDisplayString(format)}>"
-                    : $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.List => isSavable
-                    ? $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>"
-                    : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.Dictionary => isSavable
-                    ? $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>"
-                    : $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
-                _ => throw new NotSupportedException()
-            };
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
+
+            // isSavable == true
+            if (lazyConfig.UseAbstractType)
+            {
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArraySavableBase<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
+            else
+            {
+                if (lazyConfig.Mode == LazyLoadMode.None)
+                {
+                    return colType switch
+                    {
+                        CollectionType.Array => $"ObservableArraySavable<{typeSymbols[0].ToDisplayString(format)}>",
+                        CollectionType.List => $"ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>",
+                        CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                        _ => throw new NotSupportedException()
+                    };
+                }
+                else
+                {
+                    return colType switch
+                    {
+                        CollectionType.Array => $"ObservableArraySavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
+                        CollectionType.List => $"ObservableListSavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
+                        CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                        _ => throw new NotSupportedException()
+                    };
+                }
+            }
         }
 
-        protected string GetCollectionConcreteTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols)
+        protected string GetCollectionConcreteTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols, LazyLoadConfig lazyConfig)
         {
             var format = SymbolDisplayFormat.FullyQualifiedFormat;
             var typeIndex = colType switch
@@ -425,19 +445,80 @@ namespace Salvavida.Generator
             };
             var isSavable = IsTypeISavable(typeSymbols[typeIndex]);
 
-            return colType switch
+            if (!isSavable)
             {
-                CollectionType.Array => isSavable
-                    ? $"ObservableArraySavable<{typeSymbols[0].ToDisplayString(format)}>"
-                    : $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.List => isSavable
-                    ? $"ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>"
-                    : $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
-                CollectionType.Dictionary => isSavable
-                    ? $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>"
-                    : $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
-                _ => throw new NotSupportedException()
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
+
+            // isSavable == true
+            if (lazyConfig.Mode == LazyLoadMode.None)
+            {
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArraySavable<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableListSavable<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
+            else
+            {
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArraySavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableListSavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
+        }
+
+        /// <summary>
+        /// Gets the type string for WatchCollection call that satisfies the CRTP constraint.
+        /// Always returns the base class type that satisfies ObservableCollection&lt;TCol, TElem&gt; constraint.
+        /// </summary>
+        protected string GetWatchCollectionTypeString(CollectionType colType, ImmutableArray<ITypeSymbol> typeSymbols)
+        {
+            var format = SymbolDisplayFormat.FullyQualifiedFormat;
+            var typeIndex = colType switch
+            {
+                CollectionType.Array or CollectionType.List => 0,
+                CollectionType.Dictionary => 1,
+                _ => throw new NotSupportedException(),
             };
+            var isSavable = IsTypeISavable(typeSymbols[typeIndex]);
+
+            if (!isSavable)
+            {
+                // Non-ISavable: ObservableArray/List/Dictionary already satisfy the constraint
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArray<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableList<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionary<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
+            else
+            {
+                // ISavable: Must use the base class type that satisfies the CRTP constraint
+                // ObservableArraySavableBase<T> : ObservableCollection<ObservableArraySavableBase<T>, T>
+                // ObservableListSavableBase<T> : ObservableCollection<ObservableListSavableBase<T>, T>
+                // ObservableDictionarySavable<K,V> already satisfies the constraint (no CRTP intermediate layer)
+                return colType switch
+                {
+                    CollectionType.Array => $"ObservableArraySavableBase<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.List => $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    _ => throw new NotSupportedException()
+                };
+            }
         }
 
         protected virtual void WriteImplementationsHead(ScriptBuilder sb, CodeGenerationContext ctx)
@@ -712,6 +793,7 @@ namespace Salvavida.Generator
             {
                 var fieldName = GetOriginName(name);
                 var (collectionType, typeParameters) = _infoStore!.collectionParameterMappings[fieldName];
+                var lazyConfig = _infoStore!.lazyLoadConfigs[fieldName];
                 var typeIndex = collectionType switch
                 {
                     CollectionType.Array or CollectionType.List => 0,
@@ -719,9 +801,33 @@ namespace Salvavida.Generator
                     _ => throw new NotSupportedException("CollectionType: " + collectionType.ToString()),
                 };
                 var isSavable = IsTypeISavable(typeParameters[typeIndex]);
-                var savableStr = isSavable ? "Savable" : "";
-                var typeParametersStr = string.Join(", ", typeParameters.Select(symbol => symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
-                sb.WriteLine($"{fieldName}Ob = serializer.LoadCollection{savableStr}(ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName});");
+
+                if (!isSavable)
+                {
+                    // Non-ISavable elements: use LoadCollection (no CollectionOptions parameter)
+                    sb.WriteLine($"{fieldName}Ob = this.LoadCollection(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName});");
+                }
+                else
+                {
+                    // ISavable elements: choose method based on lazyConfig
+                    if (lazyConfig.UseAbstractType)
+                    {
+                        // UseAbstractType = true: always use LoadCollectionSavableAbstract
+                        sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavableAbstract(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode} }});");
+                    }
+                    else
+                    {
+                        // UseAbstractType = false: choose concrete type method
+                        if (lazyConfig.Mode == LazyLoadMode.None)
+                        {
+                            sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavable(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode} }});");
+                        }
+                        else
+                        {
+                            sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavableLazy(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode} }});");
+                        }
+                    }
+                }
                 sb.WriteLine($"OnCollectionDeserialized({fieldName}Ob);");
             }
         }
