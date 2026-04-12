@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 
 namespace Salvavida
 {
@@ -11,10 +12,12 @@ namespace Salvavida
         public ObservableArraySavable(string propName, T?[]? src, bool saveSeparately)
             : base(propName, saveSeparately)
         {
+            _idxDeleted = new();
             SwapSource(src, false);
         }
 
         private T?[]? _arr;
+        private readonly HashSet<int> _idxDeleted;
 
         public override bool IsDirty
         {
@@ -46,6 +49,8 @@ namespace Salvavida
                 var oldVal = _arr[index];
                 if (EqualityComparer<T?>.Default.Equals(oldVal, value))
                     return;
+                if(oldVal!=null)
+                    _idxDeleted.Add(index);
                 _arr[index] = value;
                 if (value != null)
                     value.SvId = GetPaddedIndex(index, _arr.Length);
@@ -88,15 +93,20 @@ namespace Salvavida
             {
                 var elem = _arr[i];
                 if (elem == null)
-                {
-                    serializer.Save<T>(default, ctx, GetPaddedIndex(i, _arr.Length), PathBuilder.Type.Collection);
-                }
+                    continue;
                 else if (elem.IsDirty)
                 {
                     using var _ = ctx.Path.UsePush(elem.SvId, PathBuilder.Type.Collection);
                     elem.Serialize(serializer, ctx);
                 }
             }
+
+            foreach(var idx in _idxDeleted)
+            {
+                var id = GetPaddedIndex(idx, _arr.Length);
+                serializer.Delete(ctx, id, PathBuilder.Type.Collection);
+            }
+            _idxDeleted.Clear();
 
             var meta = new CollectionMetadata
             {
