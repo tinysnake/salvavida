@@ -16,7 +16,7 @@ namespace Salvavida
         }
 
         private List<Slot>? _list;
-        private HashSet<string> _idsDeleted = new();
+        private readonly HashSet<string> _idsDeleted = new();
         private bool _needsRebalance;
 
         public override bool IsDirty
@@ -103,7 +103,7 @@ namespace Salvavida
             {
                 var precisionDigits = Math.Max(DEFAULT_PRECISION_DIGITS, LexoRank.CalculatePrecisionDigits(_list.Count));
                 var initRank = LexoRank.GetInitValue(precisionDigits);
-                var rank = LexoRank.Rebalance(initRank, _list.Count, false, out int step, out bool reverseOrder);
+                var rank = LexoRank.Rebalance(initRank, _list.Count, out int step, out bool reverseOrder);
                 var oldIds = SvHelper.idListPool.Get();
                 Span<char> rankBuffer = stackalloc char[128];
                 try
@@ -220,7 +220,7 @@ namespace Salvavida
             if (list != null)
             {
                 _list = new List<Slot>(list.Count);
-                var id = LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS, chunkId: "V");
+                var id = LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS);
                 for (var i = 0; i < list.Count; i++)
                 {
                     var item = list[i];
@@ -323,7 +323,7 @@ namespace Salvavida
         private string GenerateIdForIndex(int index)
         {
             if (_list == null || _list.Count == 0)
-                return LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS, chunkId: "V");
+                return LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS);
 
             string? prevId = index > 0 ? _list[index - 1].Id : null;
             string? nextId = index < _list.Count ? _list[index].Id : null;
