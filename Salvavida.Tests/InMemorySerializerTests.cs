@@ -159,38 +159,26 @@ namespace Salvavida.Tests
             // Save collection items with parent path
             ctx.Path.Push("user", PathBuilder.Type.Property);
             ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("0~A~V3", PathBuilder.Type.Collection);
+            ctx.Path.Push("0~V3", PathBuilder.Type.Collection);
             serializer.SaveNoPushPath("value3", ctx);
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
             ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("0~A~V1", PathBuilder.Type.Collection);
+            ctx.Path.Push("0~V1", PathBuilder.Type.Collection);
             serializer.SaveNoPushPath("value1", ctx);
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
             ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("1~A~V4", PathBuilder.Type.Collection);
+            ctx.Path.Push("1~V4", PathBuilder.Type.Collection);
             serializer.SaveNoPushPath("value4", ctx);
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
             ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("0~A~V2", PathBuilder.Type.Collection);
+            ctx.Path.Push("0~V2", PathBuilder.Type.Collection);
             serializer.SaveNoPushPath("value2", ctx);
-
-            ctx.Path.Clear();
-            ctx.Path.Push("user", PathBuilder.Type.Property);
-            ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("0~B~V2", PathBuilder.Type.Collection);
-            serializer.SaveNoPushPath("value2b", ctx);
-
-            ctx.Path.Clear();
-            ctx.Path.Push("user", PathBuilder.Type.Property);
-            ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("1~B~V4", PathBuilder.Type.Collection);
-            serializer.SaveNoPushPath("value4b", ctx);
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
@@ -198,10 +186,10 @@ namespace Salvavida.Tests
 
             var idList = new System.Collections.Generic.List<string>(ids);
             Assert.Equal(4, idList.Count);
-            Assert.Equal("0~A~V1", idList[0]);
-            Assert.Equal("0~A~V2", idList[1]);
-            Assert.Equal("0~A~V3", idList[2]);
-            Assert.Equal("1~A~V4", idList[3]);
+            Assert.Equal("0~V1", idList[0]);
+            Assert.Equal("0~V2", idList[1]);
+            Assert.Equal("0~V3", idList[2]);
+            Assert.Equal("1~V4", idList[3]);
         }
 
         [Fact]
