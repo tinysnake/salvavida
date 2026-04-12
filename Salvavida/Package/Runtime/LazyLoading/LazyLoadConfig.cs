@@ -10,5 +10,7 @@ namespace Salvavida
         /// Default: None (no lazy loading, load all at once)
         /// </summary>
         public LazyLoadMode Mode { get; set; }
+
+        public int BatchLoadCount { get; set; }
     }
 }

@@ -76,6 +76,11 @@ namespace Salvavida.Tests
         [JsonIgnore]
         public List<SavableCustomData?> separatelySavedSavableCustomDataList;
 
+        [SaveSeparately]
+        [JsonIgnore]
+        [LazyLoad(Mode = LazyLoadMode.LoadAll, UseAbstractType = true)]
+        public List<SavableCustomData?> separatelySavedSavableCustomDataListLazy;
+
         // 基础类型[] 字段
         public int[] intArray;
         public float[] floatArray;
@@ -99,6 +104,11 @@ namespace Salvavida.Tests
         [SaveSeparately]
         [JsonIgnore]
         public SavableCustomData?[] separatelySavedSavableCustomDataArray;
+        
+        [SaveSeparately]
+        [JsonIgnore]
+        [LazyLoad(Mode = LazyLoadMode.LoadIndividual, BatchLoadCount = 2)]
+        public SavableCustomData?[] separatelySavedSavableCustomDataArrayLazy;
 
         // Dictionary<string, 基础类型> 字段
         public Dictionary<string, int> intDict;

@@ -53,7 +53,7 @@ namespace Salvavida
                         _idsDeleted.Add(oldId);
                 if (value != null)
                     value.SvId = newId;
-                _list[index] = new Slot(newId, value, true);
+                _list[index] = new Slot(newId, value, true, true);
                 OnItemSet(value, index);
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Replace(this, oldValue, value, index));
                 TryUnWatch(oldValue);
@@ -86,7 +86,7 @@ namespace Salvavida
                 {
                     var slot = _list[i];
                     slot.Value?.SetDirty(dirty, recursive);
-                    _list[i] = new Slot(slot.Id, slot.Value, dirty);
+                    _list[i] = new Slot(slot.Id, slot.Value, dirty, slot.IsLoaded);
                 }
             }
         }
@@ -113,7 +113,7 @@ namespace Salvavida
                         var slot = _list[i];
                         if (!string.IsNullOrEmpty(slot.Id))
                             oldIds.Add(slot.Id);
-                        slot = new Slot(rank, slot.Value, slot.IsDirty);
+                        slot = new Slot(rank, slot.Value, slot.IsDirty, slot.IsLoaded);
                         if (slot.Value != null)
                             slot.Value.SvId = rank;
                         _list[i] = slot;
@@ -129,7 +129,7 @@ namespace Salvavida
                             using var _ = ctx.Path.UsePush(slot.Id, PathBuilder.Type.Collection); 
                             slot.Value.Serialize(serializer, ctx);
                         }
-                        _list[i] = new Slot(slot.Id, slot.Value, false);
+                        _list[i] = new Slot(slot.Id, slot.Value, false, slot.IsLoaded);
                     }
                     foreach (var oldId in oldIds)
                     {
@@ -185,7 +185,7 @@ namespace Salvavida
             foreach (var id in ids)
             {
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
-                list.Add(new Slot(id, item, false));
+                list.Add(new Slot(id, item, false, true));
                 OnChildDeserialized(item);
             }
             _idsDeleted.Clear();
@@ -224,7 +224,7 @@ namespace Salvavida
                 for (var i = 0; i < list.Count; i++)
                 {
                     var item = list[i];
-                    var slot = new Slot(id, item, item == null);
+                    var slot = new Slot(id, item, item == null, true);
                     _list.Add(slot);
                     if (item != null)
                         item.SvId = id;
@@ -289,7 +289,7 @@ namespace Salvavida
                 throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             var id = GenerateIdForIndex(index);
-            var slot = new Slot(id, item, item == null);
+            var slot = new Slot(id, item, item == null, true);
             if (item != null)
                 item.SvId = id;
             _list.Add(slot);
@@ -306,7 +306,7 @@ namespace Salvavida
             {
                 var item = collection[i];
                 var id = GenerateIdForIndex(index + i);
-                var slot = new Slot(id, item, item == null);
+                var slot = new Slot(id, item, item == null, true);
                 if (item != null)
                     item.SvId = id;
                 _list.Add(slot);
@@ -403,7 +403,7 @@ namespace Salvavida
             if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > REBALANCE_LENGTH_THRESHOLD)
                 _needsRebalance = true;
 
-            _list.Insert(index, new Slot(id, item, item == null));
+            _list.Insert(index, new Slot(id, item, item == null, true));
             OnItemSet(item, index);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
         }
@@ -424,7 +424,7 @@ namespace Salvavida
                 var id = new string(rankBuffer.Slice(0, rankLen));
                 if (item != null)
                     item.SvId = id;
-                _list.Insert(index + i, new Slot(id, item, item == null));
+                _list.Insert(index + i, new Slot(id, item, item == null, true));
                 OnItemSet(item, index + i);
             }
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));

@@ -12,7 +12,7 @@ namespace Salvavida
     public sealed class ObservableListSavableLazy<T> : ObservableListSavableBase<ObservableListSavableLazy<T>, T>
         where T : ISavable
     {
-        public ObservableListSavableLazy(string propName, bool saveSeparately) : base(propName, saveSeparately)
+        public ObservableListSavableLazy(string propName, List<T> src, bool saveSeparately) : base(propName, saveSeparately)
         {
         }
 

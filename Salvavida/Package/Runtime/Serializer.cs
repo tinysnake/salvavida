@@ -358,6 +358,11 @@ namespace Salvavida
 
         protected abstract void DoDeleteAll(SerializeContext ctx);
 
+        protected virtual void OnDeleteAllFailed(SerializeContext ctx, Exception ex)
+        {
+            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
+        }
+
         public IEnumerable<string> ListCollectionIds(SerializeContext ctx, string propName)
         {
             using var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
@@ -371,49 +376,20 @@ namespace Salvavida
         /// </summary>
         public abstract IEnumerable<string> ListCollectionIds(SerializeContext ctx);
 
-        public IEnumerable<string> ListCollectionIds(
-            SerializeContext ctx, string propName, int skipCount, int pageSize)
+        public IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string propName, string prefix)
         {
             var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            return ListCollectionIds(ctx, skipCount, pageSize);
+            return ListCollectionIdsPrefix(ctx, prefix);
         }
+        public abstract IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix);
 
-        /// <summary>
-        /// Get a page of IDs starting from a specific bucket.
-        /// Implementation: scan keys matching [0-2]~{chunkId}~*, skip skipCount, collect pageSize.
-        /// </summary>
-        public abstract IEnumerable<string> ListCollectionIds(
-            SerializeContext ctx, int skipCount, int pageSize);
-
-        public IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string propName, string prefix, int skipCount, int pageSize)
+        public IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string propName, string minValue, string maxValue)
         {
             var _ = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            return ListCollectionIdsPrefix(ctx, prefix, skipCount, pageSize);
+            return ListCollectionIdsMinMax(ctx, minValue, maxValue);
         }
-        public abstract IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix, int skipCount, int pageSize);
 
-        protected virtual void OnDeleteAllFailed(SerializeContext ctx, Exception ex)
-        {
-            throw new SalvavidaSerializeException($"serializatin failed on: {nameof(OnDeleteAllFailed)}, at path: {ctx?.Path.ToString() ?? "(empty)"}", ex);
-        }
-        // private bool TryDeleteOnNull<T>(T obj, SerializeContext ctx)
-        // {
-        //     if (obj == null)
-        //     {
-        //         try
-        //         {
-        //             DoDelete(ctx);
-        //         }
-        //         catch (Exception ex)
-        //         {
-        //             OnDeleteFailed(ctx, ex);
-        //         }
-
-        //         return true;
-        //     }
-
-        //     return false;
-        // }
+        public abstract IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string minValue, string maxValue);
 
         protected virtual void AfterDeserialize<T>(T obj, SerializeContext ctx)
         {

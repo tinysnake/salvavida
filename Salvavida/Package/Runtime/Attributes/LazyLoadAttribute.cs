@@ -10,6 +10,11 @@ namespace Salvavida
     public class LazyLoadAttribute : Attribute
     {
         /// <summary>
+        /// Default value for BatchLoadCount.
+        /// </summary>
+        public const int DefaultBatchLoadCount = 5;
+
+        /// <summary>
         /// Lazy loading mode.
         /// Default: None (no lazy loading, load all at once)
         /// </summary>
@@ -18,7 +23,7 @@ namespace Salvavida
         /// <summary>
         /// Once it tries to load a data from serializer, it will batch load the next N data.
         /// </summary>
-        public int BatchLoadCount { get; set; } = 5;
+        public int BatchLoadCount { get; set; } = DefaultBatchLoadCount;
 
         /// <summary>
         /// Once this is true, the generated property type will not change whether you switch between Modes.

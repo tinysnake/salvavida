@@ -182,7 +182,7 @@ namespace Salvavida.Tests
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
-            var ids = serializer.ListCollectionIds(ctx, "items", 0, 10);
+            var ids = serializer.ListCollectionIds(ctx, "items");
 
             var idList = new System.Collections.Generic.List<string>(ids);
             Assert.Equal(4, idList.Count);

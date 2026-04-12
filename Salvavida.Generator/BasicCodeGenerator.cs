@@ -272,12 +272,28 @@ namespace Salvavida.Generator
                 LazyLoadConfig lazyConfig = default;
                 if (lazyLoadAttr != null)
                 {
+                    // Get default value for BatchLoadCount from the DefaultBatchLoadCount constant
+                    var attrClass = lazyLoadAttr.AttributeClass;
+                    if (attrClass != null)
+                    {
+                        foreach (var member in attrClass.GetMembers())
+                        {
+                            if (member is IFieldSymbol { Name: "DefaultBatchLoadCount", IsConst: true } field)
+                            {
+                                lazyConfig.BatchLoadCount = (int)field.ConstantValue!;
+                            }
+                        }
+                    }
+
+                    // Override with explicit values from attribute usage
                     foreach (var namedArg in lazyLoadAttr.NamedArguments)
                     {
                         if (namedArg.Key == "Mode")
                             lazyConfig.Mode = (LazyLoadMode)(int)namedArg.Value.Value!;
                         else if (namedArg.Key == "UseAbstractType")
                             lazyConfig.UseAbstractType = (bool)namedArg.Value.Value!;
+                        else if (namedArg.Key == "BatchLoadCount")
+                            lazyConfig.BatchLoadCount = (int)namedArg.Value.Value!;
                     }
                 }
                 _infoStore!.lazyLoadConfigs[fieldName] = lazyConfig;
@@ -813,18 +829,18 @@ namespace Salvavida.Generator
                     if (lazyConfig.UseAbstractType)
                     {
                         // UseAbstractType = true: always use LoadCollectionSavableAbstract
-                        sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavableAbstract(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode} }});");
+                        sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavableAbstract(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode}, BatchLoadCount = {lazyConfig.BatchLoadCount} }});");
                     }
                     else
                     {
                         // UseAbstractType = false: choose concrete type method
                         if (lazyConfig.Mode == LazyLoadMode.None)
                         {
-                            sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavable(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode} }});");
+                            sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavable(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode}, BatchLoadCount = {lazyConfig.BatchLoadCount} }});");
                         }
                         else
                         {
-                            sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavableLazy(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode} }});");
+                            sb.WriteLine($"{fieldName}Ob = this.LoadCollectionSavableLazy(serializer, ctx, \"{name}\", {(isSeparated ? "true" : "false")}, ref {fieldName}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode}, BatchLoadCount = {lazyConfig.BatchLoadCount} }});");
                         }
                     }
                 }

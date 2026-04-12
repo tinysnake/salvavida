@@ -128,19 +128,20 @@ namespace Salvavida
     {
         public readonly struct Slot
         {
-            public string Id { get;}
-            public TElem? Value {get;}
+            public string Id { get; }
+            public TElem? Value { get; }
+            public bool IsDirty { get; }
+            public bool IsLoaded { get; }
 
-            public bool IsDirty {get;}
-
-            public Slot(string id, TElem? value, bool isDirty)
+            public Slot(string id, TElem? value, bool isDirty, bool isLoaded)
             {
                 Id = id;
                 Value = value;
                 IsDirty = isDirty;
+                IsLoaded = isLoaded;
             }
 
-            public bool IsTrueDirty => IsDirty || (Value != null && Value.IsDirty);
+            public bool IsTrueDirty => Value != null ? Value.IsDirty : IsDirty;
 
             public static implicit operator TElem?(Slot slot) => slot.Value;
         }

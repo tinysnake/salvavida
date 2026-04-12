@@ -126,7 +126,7 @@ namespace Salvavida.Tests
                 .OrderBy(id => id);
         }
 
-        public override IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix, int skipCount, int pageSize)
+        public override IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix)
         {
             var basePath = ctx.Path.ToString() + "/";
             return _storage.Keys
@@ -138,39 +138,9 @@ namespace Salvavida.Tests
                 .OrderBy(id => id);
         }
 
-        public override IEnumerable<string> ListCollectionIds(
-            SerializeContext ctx, int skipCount, int pageSize)
+        public override IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string minValue, string maxValue)
         {
-            var basePath = ctx.Path.ToString() + "/";
-            var pathSpan = ctx.Path.AsSpan();
-            var prefixLen = 2;
-            var prefixPathArray = new char[prefixLen];
-            var prefixPath = prefixPathArray.AsSpan();
-            "0~".CopyTo(prefixPath);
-
-            return _storage.Keys
-                .Where(key =>
-                {
-                    var keySpan = key.AsSpan();
-                    if (!keySpan.StartsWith(basePath.AsSpan(), StringComparison.Ordinal))
-                        return false;
-                    keySpan = keySpan[basePath.Length..];
-                    var prefixSpan = prefixPathArray.AsSpan();
-                    prefixSpan[0] = '0';
-                    if (keySpan.StartsWith(prefixSpan, StringComparison.Ordinal))
-                        return true;
-                    prefixSpan[0] = '1';
-                    if (keySpan.StartsWith(prefixSpan, StringComparison.Ordinal))
-                        return true;
-                    prefixSpan[0] = '2';
-                    if (keySpan.StartsWith(prefixSpan, StringComparison.Ordinal))
-                        return true;
-                    return false;
-                })
-                .Select(key => key[basePath.Length..])
-                .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
-                .Distinct()
-                .OrderBy(id => id);
+            throw new NotImplementedException();
         }
 
         #endregion

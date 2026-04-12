@@ -21,6 +21,7 @@ namespace Salvavida.Generator
     {
         public LazyLoadMode Mode;
         public bool UseAbstractType;
+        public int BatchLoadCount;
     }
 
     public class CodeGenInfoStore

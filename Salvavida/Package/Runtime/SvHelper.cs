@@ -120,7 +120,7 @@ namespace Salvavida
             }
             else
             {
-                var lazyCol = new ObservableArraySavableLazy<TElem>(propName.ToString(), saveSeparately);
+                var lazyCol = new ObservableArraySavableLazy<TElem>(propName.ToString(), saveSeparately, config);
                 if (saveSeparately)
                 {
                     lazyCol.Deserialize(serializer, ctx);
@@ -148,7 +148,7 @@ namespace Salvavida
             where TElem : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var lazyCol = new ObservableArraySavableLazy<TElem>(propName.ToString(), saveSeparately);
+            var lazyCol = new ObservableArraySavableLazy<TElem>(propName.ToString(), saveSeparately, config);
             if (saveSeparately)
             {
                 lazyCol.Deserialize(serializer, ctx);
@@ -176,7 +176,7 @@ namespace Salvavida
             }
             else
             {
-                var lazyCol = new ObservableListSavableLazy<TElem>(propName.ToString(), saveSeparately);
+                var lazyCol = new ObservableListSavableLazy<TElem>(propName.ToString(), null, saveSeparately);
                 if (saveSeparately)
                 {
                     lazyCol.Deserialize(serializer, ctx);
@@ -204,7 +204,7 @@ namespace Salvavida
             where TElem : ISavable
         {
             using var __s = ctx.Path.UsePush(propName, PathBuilder.Type.Property);
-            var lazyCol = new ObservableListSavableLazy<TElem>(propName.ToString(), saveSeparately);
+            var lazyCol = new ObservableListSavableLazy<TElem>(propName.ToString(), null, saveSeparately);
             if (saveSeparately)
             {
                 lazyCol.Deserialize(serializer, ctx);
