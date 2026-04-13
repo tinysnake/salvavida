@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Salvavida
 {
@@ -14,8 +15,9 @@ namespace Salvavida
         {
             SwapSource(src, false);
         }
+        
 
-        private List<Slot>? _list;
+        private List<Slot> _list = new();
         private readonly HashSet<string> _idsDeleted = new();
         private bool _needsRebalance;
 
@@ -48,9 +50,9 @@ namespace Salvavida
                 if (EqualityComparer<T?>.Default.Equals(oldValue, value))
                     return;
                 var oldId = slot.Id;
-                    var newId = slot.Id ?? GenerateIdForIndex(index);
-                    if (!string.IsNullOrEmpty(oldId) && oldId != newId)
-                        _idsDeleted.Add(oldId);
+                var newId = slot.Id ?? GenerateIdForIndex(index);
+                if (!string.IsNullOrEmpty(oldId) && oldId != newId)
+                    _idsDeleted.Add(oldId);
                 if (value != null)
                     value.SvId = newId;
                 _list[index] = new Slot(newId, value, true, true);
@@ -60,17 +62,9 @@ namespace Salvavida
             }
         }
 
-        public override int Count => _list?.Count ?? 0;
+        public override int Count => _list.Count;
 
-        public List<T?>? RetrieveSource()
-        {
-            if (_list == null)
-                return null;
-            var result = new List<T?>(_list.Count);
-            foreach (var slot in _list)
-                result.Add(slot.Value);
-            return result;
-        }
+        public List<T?>? RetrieveSource() => _list.Select(x=>x.Value).ToList();
 
         public object? RetrieveSourceRaw() => RetrieveSource();
 
@@ -104,41 +98,28 @@ namespace Salvavida
                 var precisionDigits = Math.Max(DEFAULT_PRECISION_DIGITS, LexoRank.CalculatePrecisionDigits(_list.Count));
                 var initRank = LexoRank.GetInitValue(precisionDigits);
                 var rank = LexoRank.Rebalance(initRank, _list.Count, out int step, out bool reverseOrder);
-                var oldIds = SvHelper.idListPool.Get();
                 Span<char> rankBuffer = stackalloc char[128];
-                try
+                serializer.DeleteAllNoPushPath(ctx);
+                for (int i = 0; i < _list.Count; i++)
                 {
-                    for (int i = 0; i < _list.Count; i++)
-                    {
-                        var slot = _list[i];
-                        if (!string.IsNullOrEmpty(slot.Id))
-                            oldIds.Add(slot.Id);
-                        slot = new Slot(rank, slot.Value, slot.IsDirty, slot.IsLoaded);
-                        if (slot.Value != null)
-                            slot.Value.SvId = rank;
-                        _list[i] = slot;
-                            rank = LexoRank.Generate(rank, null, precisionDigits, stepSize: step);
-                    }
-                    for (int i = 0; i < _list.Count; i++)
-                    {
-                        var slot = _list[i];
-                        if(slot.Value == null)
-                            serializer.Save<T?>(default, ctx, slot.Id, PathBuilder.Type.Collection);
-                        else
-                        {
-                            using var _ = ctx.Path.UsePush(slot.Id, PathBuilder.Type.Collection); 
-                            slot.Value.Serialize(serializer, ctx);
-                        }
-                        _list[i] = new Slot(slot.Id, slot.Value, false, slot.IsLoaded);
-                    }
-                    foreach (var oldId in oldIds)
-                    {
-                        serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
-                    }
+                    var slot = _list[i];
+                    slot = new Slot(rank, slot.Value, slot.IsDirty, slot.IsLoaded);
+                    if (slot.Value != null)
+                        slot.Value.SvId = rank;
+                    _list[i] = slot;
+                    rank = LexoRank.Generate(rank, null, precisionDigits, stepSize: step);
                 }
-                finally
+                for (int i = 0; i < _list.Count; i++)
                 {
-                    SvHelper.idListPool.Return(oldIds);
+                    var slot = _list[i];
+                    if(slot.Value == null)
+                        serializer.Save<T?>(default, ctx, slot.Id, PathBuilder.Type.Collection);
+                    else
+                    {
+                        using var _ = ctx.Path.UsePush(slot.Id, PathBuilder.Type.Collection); 
+                        slot.Value.Serialize(serializer, ctx);
+                    }
+                    _list[i] = new Slot(slot.Id, slot.Value, false, slot.IsLoaded);
                 }
                 _needsRebalance = false;
             }
@@ -161,7 +142,7 @@ namespace Salvavida
 
             var meta = new CollectionMetadata
             {
-                Count = _list?.Count??0,
+                Count = _list.Count,
             };
 
             serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
@@ -180,46 +161,43 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var list = new List<Slot>();
-            var ids = serializer.ListCollectionIds(ctx, _svid!);
+            SwapSource(null, false);
+            var ids = serializer.ListCollectionIds(ctx);
             foreach (var id in ids)
             {
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
-                list.Add(new Slot(id, item, false, true));
+                if(item!=null)
+                    item.SvId = id;
+                _list.Add(new Slot(id, item, false, true));
+                TryWatch(item);
                 OnChildDeserialized(item);
             }
+            
             _idsDeleted.Clear();
-            SwapSourceFromSlots(list, false);
+            _isDirty = false;
         }
 
         public override void SwapSource(List<T?>? list)
         {
-            _isDirty = true;
             SwapSource(list, true);
         }
 
         private void SwapSource(List<T?>? list, bool notifyChanges)
         {
-            if (_list != null)
+            foreach (var slot in _list)
             {
-                if (notifyChanges)
-                {
-                    foreach (var slot in _list)
-                    {
-                        if (!string.IsNullOrEmpty(slot.Id))
-                            _idsDeleted.Add(slot.Id);
-                    }
-                    OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
-                }
-                for (var i = 0; i < _list.Count; i++)
-                {
-                    TryUnWatch(_list[i].Value);
-                }
+                if (!string.IsNullOrEmpty(slot.Id))
+                    _idsDeleted.Add(slot.Id);
+                TryUnWatch(slot.Value);
             }
-            _list = null;
+
+            if (notifyChanges)
+                OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
+
+            _list.Clear();
+            _isDirty = true;
             if (list != null)
             {
-                _list = new List<Slot>(list.Count);
                 var id = LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS);
                 for (var i = 0; i < list.Count; i++)
                 {
@@ -229,44 +207,7 @@ namespace Salvavida
                     if (item != null)
                         item.SvId = id;
                     id = LexoRank.Generate(id, null, DEFAULT_PRECISION_DIGITS);
-                    if (notifyChanges)
-                        TryWatch(item);
-                    else
-                        OnChildDeserialized(item);
-                }
-                if (notifyChanges)
-                    OnCollectionChange(CreateSaveAllEvent());
-            }
-        }
-
-        private void SwapSourceFromSlots(List<Slot> list, bool notifyChanges)
-        {
-            if (_list != null)
-            {
-                if (notifyChanges)
-                {
-                    foreach (var slot in _list)
-                    {
-                        if (!string.IsNullOrEmpty(slot.Id))
-                            _idsDeleted.Add(slot.Id);
-                    }
-                    OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
-                }
-                for (var i = 0; i < _list.Count; i++)
-                {
-                    TryUnWatch(_list[i].Value);
-                }
-            }
-            _list = list;
-            if (_list != null)
-            {
-                for (var i = 0; i < _list.Count; i++)
-                {
-                    var slot = _list[i];
-                    if (notifyChanges)
-                        TryWatch(slot.Value);
-                    else
-                        OnChildDeserialized(slot.Value);
+                    TryWatch(item);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());

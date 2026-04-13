@@ -1,8 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Linq.Expressions;
 
 namespace Salvavida
 {
@@ -13,10 +11,11 @@ namespace Salvavida
             : base(propName, saveSeparately)
         {
             _idxDeleted = new();
+            _arr = Array.Empty<T>();
             SwapSource(src, false);
         }
 
-        private T?[]? _arr;
+        private T?[] _arr;
         private readonly HashSet<int> _idxDeleted;
 
         public override bool IsDirty
@@ -25,8 +24,6 @@ namespace Salvavida
             {
                 if (IsSelfDirty)
                     return true;
-                if (_arr == null)
-                    return false;
                 foreach (var item in _arr)
                 {
                     if (item == null)
@@ -41,11 +38,14 @@ namespace Salvavida
 
         public override T? this[int index]
         {
-            get => _arr == null ? throw new NullReferenceException(nameof(_arr)) : _arr[index];
+            get
+            {
+                ValidateIndex(index);
+                return _arr[index];
+            }
             set
             {
-                if (_arr == null)
-                    throw new NullReferenceException(nameof(_arr));
+                ValidateIndex(index);
                 var oldVal = _arr[index];
                 if (EqualityComparer<T?>.Default.Equals(oldVal, value))
                     return;
@@ -81,12 +81,15 @@ namespace Salvavida
             }
         }
 
+        private void ValidateIndex(int index)
+        {
+            if(index < 0 || index >= _arr.Length)
+                throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
-                return;
-
-            if (_arr == null)
                 return;
 
             for (var i = 0; i < _arr.Length; i++)
@@ -119,13 +122,11 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-            var ids = serializer.ListCollectionIds(ctx).ToArray().AsSpan();
-            if (ids.Length == 0)
-            {
-                SwapSource(null, false);
-                return;
-            }
-            var arr = new T?[ids.Length];
+
+            CollectionMetadata metadata = serializer.Read<CollectionMetadata>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+
+            SwapSource(null, false);
+            var arr = new T?[metadata.Count];
             // var idConverter = SvIdConverter.GetConverter<int>() ?? throw new InvalidOperationException($"No SvId converter found for type int, which is required for deserializing {GetType().FullName}");
             var index = 0;
             foreach (var id in serializer.ListCollectionIds(ctx))
@@ -133,20 +134,25 @@ namespace Salvavida
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
                 arr[index++] = item;
                 if (item != null)
+                {
+                    item.SvId = id;
                     TryWatch(item);
+                    OnChildDeserialized(item);
+                }
             }
-            SwapSource(arr, false);
+            _arr = arr;
+            _isDirty = false;
         }
 
 
         public override void SwapSource(T?[]? array)
         {
-            _isDirty = true;
             SwapSource(array, true);
         }
 
         private void SwapSource(T?[]? array, bool notifyChanges)
         {
+            array ??= Array.Empty<T>();
             if (_arr != null)
             {
                 if (notifyChanges)
@@ -157,6 +163,7 @@ namespace Salvavida
                 }
             }
             _arr = array;
+            _isDirty = true;
             if (_arr != null)
             {
                 for (var i = 0; i < _arr.Length; i++)
@@ -164,10 +171,7 @@ namespace Salvavida
                     var item = _arr[i];
                     if (item != null && item.SvId == null)
                         item.SvId = GetPaddedIndex(i, _arr.Length);
-                    if (notifyChanges)
-                        TryWatch(item);
-                    else
-                        OnChildDeserialized(item);
+                    TryWatch(item);
                 }
                 if (notifyChanges)
                     OnCollectionChange(CreateSaveAllEvent());
@@ -176,16 +180,12 @@ namespace Salvavida
 
         private CollectionChangeInfo<ObservableArraySavableBase<T>, T?> CreateSaveAllEvent()
         {
-            if (_arr == null)
-                throw new NullReferenceException(nameof(_arr));
             return CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Add(this, _arr, 0);
         }
 
         public override bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;
 
-        public ArrayEnumerator GetEnumeratorStruct() => _arr == null ? throw new NullReferenceException(nameof(_arr)) : new(_arr);
-
-        public override IEnumerator<T?> GetEnumerator() => GetEnumeratorStruct();
+        public override IEnumerator<T?> GetEnumerator() => new ArrayEnumerator(_arr);
 
         public override int IndexOf(T? item) => Array.IndexOf(_arr, item);
 
@@ -210,7 +210,7 @@ namespace Salvavida
             {
                 if (_i < _arr.Length)
                 {
-                    _arr[_i++] = _cur;
+                    _cur = _arr[_i++];
                     return true;
                 }
                 _i = _arr.Length;

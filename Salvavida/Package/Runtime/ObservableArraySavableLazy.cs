@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace Salvavida
@@ -219,6 +220,7 @@ namespace Salvavida
                         if (slot.IsLoaded && slot.Value != null)
                             TryUnWatch(slot.Value);
                     }
+                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Reset(this));
                 }
 
                 if (array != null && array.Length > 0)
@@ -237,6 +239,7 @@ namespace Salvavida
                         }
                     }
                     _loadedCount = array.Length;
+                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Add(this, _slots.Select(x => x.Value).ToArray(), 0));
                 }
                 else
                 {
@@ -246,7 +249,6 @@ namespace Salvavida
                 }
 
                 _isDirty = true;
-                OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Reset(this));
             }
             finally { _lock.ExitWriteLock(); }
         }
