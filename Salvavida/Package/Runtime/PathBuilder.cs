@@ -20,15 +20,12 @@ namespace Salvavida
                 _pb.Push(segment, type);
             }
 
-            private PathBuilder _pb;
+            private PathBuilder? _pb;
 
             public void Dispose()
             {
-                if (_pb != null)
-                {
-                    _pb.Pop();
-                    _pb = null;
-                }
+                _pb?.Pop();
+                _pb = null;
             }
         }
 

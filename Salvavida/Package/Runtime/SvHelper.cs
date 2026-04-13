@@ -10,7 +10,7 @@ namespace Salvavida
         internal static Type typeOfSavableInterface = typeof(ISavable);
         internal static Random randomizer = new();
         internal static readonly DefaultObjectPool<List<string>> idListPool = new(() => new List<string>(), l => l.Clear(), 10);
-        private static Stack<(string, PathBuilder.Type)> _tempPathBuilder = new();
+        internal static readonly DefaultObjectPool<Stack<(string, PathBuilder.Type)>> tempPathBuilderPool = new(()=> new Stack<(string, PathBuilder.Type)>(), s => s.Clear(), 10);
 
         public static bool CheckIsSavable<T>()
         {
@@ -48,17 +48,19 @@ namespace Salvavida
                 throw new ArgumentNullException(nameof(pathBuilder));
             if (!pathBuilder.IsEmpty)
                 throw new ArgumentNullException(nameof(pathBuilder) + " is not empty");
-            _tempPathBuilder.Clear();
+
+            using var scope = tempPathBuilderPool.Get(out var pathBuilderTmp);
+            pathBuilderTmp.Clear();
             while (savable != null)
             {
                 TryThrowOnSvIdEmpty(savable);
-                _tempPathBuilder.Push((savable.SvId!, GetPathType(savable)));
+                pathBuilderTmp.Push((savable.SvId!, GetPathType(savable)));
                 savable = savable.SvParent;
             }
             var lastPathType = PathBuilder.Type.Property;
-            while (_tempPathBuilder.Count > 0)
+            while (pathBuilderTmp.Count > 0)
             {
-                var item = _tempPathBuilder.Pop();
+                var item = pathBuilderTmp.Pop();
                 pathBuilder.Push(item.Item1, lastPathType);
                 lastPathType = item.Item2;
             }
