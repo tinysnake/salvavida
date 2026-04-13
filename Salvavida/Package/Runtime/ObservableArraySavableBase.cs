@@ -78,10 +78,9 @@ namespace Salvavida
 
         protected static string GetPaddedIndex(int index, int totalCount)
         {
-            var paddingLength = index / totalCount;
-            if(index % totalCount > 0)
-                paddingLength++;
-            return index.ToString($"D{paddingLength}"); // Pad to the required number of digits for proper lexicographical ordering
+            var maxIndex = totalCount > 1 ? totalCount - 1 : 0;
+            var digits = maxIndex < 10 ? 1 : maxIndex < 100 ? 2 : maxIndex < 1000 ? 3 : maxIndex.ToString().Length;
+            return index.ToString($"D{digits}"); // Pad to the required number of digits for proper lexicographical ordering
         }
     }
 

@@ -142,6 +142,7 @@ namespace Salvavida
             }
             _arr = arr;
             _isDirty = false;
+            _isChildrenDirty = false;
         }
 
 

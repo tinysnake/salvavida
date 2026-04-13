@@ -178,7 +178,7 @@ namespace Salvavida
             {
                 if (_i < _arr.Length)
                 {
-                    _arr[_i++] = _cur;
+                    _cur = _arr[_i++];
                     return true;
                 }
                 _i = _arr.Length;

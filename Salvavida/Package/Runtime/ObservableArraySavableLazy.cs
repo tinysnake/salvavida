@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 
 namespace Salvavida
@@ -150,7 +149,7 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            _lock.EnterReadLock();
+            _lock.EnterWriteLock();
             try
             {
                 for (int i = 0; i < _slots.Length; i++)
@@ -176,7 +175,7 @@ namespace Salvavida
                     }
                 }
             }
-            finally { _lock.ExitReadLock(); }
+            finally { _lock.ExitWriteLock(); }
 
             var meta = new CollectionMetadata
             {
@@ -239,7 +238,10 @@ namespace Salvavida
                         }
                     }
                     _loadedCount = array.Length;
-                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Add(this, _slots.Select(x => x.Value).ToArray(), 0));
+                    var values = new T?[_slots.Length];
+                    for (int i = 0; i < _slots.Length; i++)
+                        values[i] = _slots[i].Value;
+                    OnCollectionChange(CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Add(this, values, 0));
                 }
                 else
                 {
