@@ -55,7 +55,7 @@ namespace Salvavida
             SetParent(parent);
         }
 
-        protected void SetParent(ISavable? parent)
+        protected virtual void SetParent(ISavable? parent)
         {
             SvParent = parent;
         }

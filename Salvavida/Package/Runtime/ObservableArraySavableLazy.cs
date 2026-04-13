@@ -18,6 +18,7 @@ namespace Salvavida
         private readonly CollectionOptions _options;
         private readonly ReaderWriterLockSlim _lock = new();
         private int _loadedCount;
+        private Serializer? _serializer;
 
         public ObservableArraySavableLazy(string propName, bool saveSeparately, CollectionOptions options)
             : base(propName, saveSeparately)
@@ -27,6 +28,14 @@ namespace Salvavida
 
             _options = options;
         }
+
+        protected override void SetParent(ISavable? parent)
+        {
+            base.SetParent(parent);
+            _serializer = parent?.GetSerializer();
+        }
+
+        private Serializer GetSerializer() => _serializer ?? throw new NullReferenceException("Serializer not available.");
 
         public override int Count => _count;
 
@@ -291,7 +300,7 @@ namespace Salvavida
                     return;
 
                 EnsureSlotsInitialized();
-                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                var serializer = GetSerializer();
                 using var locker = serializer.BeginFreshAction(this, out var ctx);
                 LoadAllInternal(serializer, ctx);
             }
@@ -316,7 +325,7 @@ namespace Salvavida
         {
             EnsureSlotsInitialized();
 
-            var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+            var serializer = GetSerializer();
 
             using var locker = serializer.BeginFreshAction(this, out var ctx);
 

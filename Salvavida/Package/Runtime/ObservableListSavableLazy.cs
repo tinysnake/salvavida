@@ -20,6 +20,7 @@ namespace Salvavida
         private int _loadedCount;
         private bool _needsRebalance;
         private uint _version;
+        private Serializer? _serializer;
 
         public ObservableListSavableLazy(string propName, bool saveSeparately, CollectionOptions options)
             : base(propName, saveSeparately)
@@ -30,6 +31,14 @@ namespace Salvavida
             _slots = new List<Slot>();
             _options = options;
         }
+
+        protected override void SetParent(ISavable? parent)
+        {
+            base.SetParent(parent);
+            _serializer = parent?.GetSerializer();
+        }
+
+        private Serializer GetSerializer() => _serializer ?? throw new NullReferenceException("Serializer not available.");
 
         public override int Count => _count;
 
@@ -116,7 +125,7 @@ namespace Salvavida
                     }
 
                     // Immediate sync to serializer
-                    var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                    var serializer = GetSerializer();
                     using var locker = serializer.BeginFreshAction(this, out var ctx);
 
                     if (value == null)
@@ -251,7 +260,7 @@ namespace Salvavida
                 TryWatch(item);
 
                 // Immediate sync to serializer
-                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                var serializer = GetSerializer();
                 using var locker = serializer.BeginFreshAction(this, out var ctx);
 
                 if (item == null)
@@ -274,7 +283,7 @@ namespace Salvavida
             _lock.EnterWriteLock();
             try
             {
-                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                var serializer = GetSerializer();
                 using var locker = serializer.BeginFreshAction(this, out var ctx);
 
                 foreach (var slot in _slots)
@@ -322,7 +331,7 @@ namespace Salvavida
                     _needsRebalance = true;
 
                 // Immediate sync to serializer
-                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                var serializer = GetSerializer();
                 using var locker = serializer.BeginFreshAction(this, out var ctx);
 
                 if (item == null)
@@ -370,7 +379,7 @@ namespace Salvavida
             _lock.EnterWriteLock();
             try
             {
-                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                var serializer = GetSerializer();
                 using var locker = serializer.BeginFreshAction(this, out var ctx);
 
                 // Clear existing
@@ -453,7 +462,7 @@ namespace Salvavida
         /// </summary>
         public void LoadAll()
         {
-            var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+            var serializer = GetSerializer();
             using var locker = serializer.BeginFreshAction(this, out var ctx);
             LoadAll(serializer, ctx);
         }
@@ -492,7 +501,7 @@ namespace Salvavida
 
         private void LoadSlotByIndex(int index)
         {
-            var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+            var serializer = GetSerializer();
             using var locker = serializer.BeginFreshAction(this, out var ctx);
             LoadSlotByIndexInternal(index, serializer, ctx);
         }
@@ -614,7 +623,7 @@ namespace Salvavida
             var slot = _slots[index];
 
             // Immediate sync - delete from serializer
-            var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+            var serializer = GetSerializer();
             using var locker = serializer.BeginFreshAction(this, out var ctx);
 
             if (!string.IsNullOrEmpty(slot.Id))
