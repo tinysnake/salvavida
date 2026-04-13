@@ -325,7 +325,7 @@ namespace Salvavida
                 var batchCount = _options.BatchLoadCount > 0 ? _options.BatchLoadCount : 1;
                 var endIndex = Math.Min(index + batchCount, _slots.Length);
 
-                var startId = GetPaddedIndex(index, _slots.Length);
+                var startId = index == 0 ? null : GetPaddedIndex(index - 1, _slots.Length);
                 var loaded = 0;
 
                 foreach (var id in serializer.ListCollectionIdsMinMax(ctx, startId, null))
