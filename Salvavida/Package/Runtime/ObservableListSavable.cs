@@ -7,15 +7,12 @@ namespace Salvavida
     public sealed class ObservableListSavable<T> : ObservableListSavableBase<ObservableListSavable<T>, T>, ICollectionWrapper<List<T?>>
         where T : ISavable
     {
-        private const int DEFAULT_PRECISION_DIGITS = 2;
-        private const int REBALANCE_LENGTH_THRESHOLD = 10;
-
         public ObservableListSavable(string propName, List<T?>? src, bool saveSeparately)
            : base(propName, saveSeparately)
         {
             SwapSource(src, false);
         }
-        
+
 
         private List<Slot> _list = new();
         private readonly HashSet<string> _idsDeleted = new();
@@ -27,11 +24,9 @@ namespace Salvavida
             {
                 if (IsSelfDirty)
                     return true;
-                if (_list == null)
-                    return false;
                 foreach (var slot in _list)
                 {
-                    if(slot.IsDirty || slot.Value != null && slot.Value.IsDirty)
+                    if (slot.IsTrueDirty)
                         return true;
                 }
                 return false;
@@ -40,11 +35,9 @@ namespace Salvavida
 
         public override T? this[int index]
         {
-            get => _list == null ? throw new NullReferenceException(nameof(_list)) : _list[index].Value;
+            get => _list[index].Value;
             set
             {
-                if (_list == null)
-                    throw new NullReferenceException(nameof(_list));
                 var slot = _list[index];
                 var oldValue = slot.Value;
                 if (EqualityComparer<T?>.Default.Equals(oldValue, value))
@@ -56,7 +49,7 @@ namespace Salvavida
                 if (value != null)
                     value.SvId = newId;
                 _list[index] = new Slot(newId, value, true, true);
-                OnItemSet(value, index);
+                TryWatch(value);
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Replace(this, oldValue, value, index));
                 TryUnWatch(oldValue);
             }
@@ -73,7 +66,7 @@ namespace Salvavida
         public override void SetDirty(bool dirty, bool recursive)
         {
             base.SetDirty(dirty, recursive);
-            if (recursive && _list != null)
+            if (recursive)
             {
                 _isChildrenDirty = dirty;
                 for(var i = 0;i<_list.Count;i++)
@@ -88,9 +81,6 @@ namespace Salvavida
         public override void Serialize(Serializer serializer, SerializeContext ctx)
         {
             if (!SaveSeparately)
-                return;
-
-            if(_list == null)
                 return;
 
             if (_needsRebalance)
@@ -140,12 +130,7 @@ namespace Salvavida
                 }
             }
 
-            var meta = new CollectionMetadata
-            {
-                Count = _list.Count,
-            };
-
-            serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+            SaveMetadata(serializer, ctx, _list.Count);
 
             if (_idsDeleted.Count > 0)
             {
@@ -216,8 +201,6 @@ namespace Salvavida
 
         private CollectionChangeInfo<ObservableListSavableBase<T>, T?> CreateSaveAllEvent()
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var items = new List<T?>(_list.Count);
             foreach (var slot in _list)
                 items.Add(slot.Value);
@@ -226,22 +209,18 @@ namespace Salvavida
 
         public override void Add(T? item)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             var id = GenerateIdForIndex(index);
             var slot = new Slot(id, item, item == null, true);
             if (item != null)
                 item.SvId = id;
             _list.Add(slot);
-            OnItemSet(item, index);
+            TryWatch(item);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
         }
 
         public void AddRange(IList<T?> collection)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var index = _list.Count;
             for (var i = 0; i < collection.Count; i++)
             {
@@ -251,35 +230,23 @@ namespace Salvavida
                 if (item != null)
                     item.SvId = id;
                 _list.Add(slot);
-                OnItemSet(item, index + i);
+                TryWatch(item);
             }
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));
         }
 
-        private void OnItemSet(T? item, int index)
-        {
-            TryWatch(item);
-        }
-
         private string GenerateIdForIndex(int index)
         {
-            if (_list == null || _list.Count == 0)
+            if (_list.Count == 0)
                 return LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS);
 
             string? prevId = index > 0 ? _list[index - 1].Id : null;
             string? nextId = index < _list.Count ? _list[index].Id : null;
-
-            Span<char> rankBuffer = stackalloc char[128];
-            int rankLen = LexoRank.Generate(
-                prevId.AsSpan(), nextId.AsSpan(),
-                DEFAULT_PRECISION_DIGITS, rankBuffer);
-            return new string(rankBuffer.Slice(0, rankLen));
+            return GenerateIdBetween(prevId, nextId);
         }
 
         public override void Clear()
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
             foreach (var slot in _list)
             {
@@ -292,8 +259,6 @@ namespace Salvavida
 
         public override bool Contains(T? item)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             foreach (var slot in _list)
             {
                 if (EqualityComparer<T?>.Default.Equals(slot.Value, item))
@@ -304,16 +269,12 @@ namespace Salvavida
 
         public override IEnumerator<T?> GetEnumerator()
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             foreach (var slot in _list)
                 yield return slot.Value;
         }
 
         public override int IndexOf(T? item)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             for (int i = 0; i < _list.Count; i++)
             {
                 if (EqualityComparer<T?>.Default.Equals(_list[i].Value, item))
@@ -324,57 +285,41 @@ namespace Salvavida
 
         public override void Insert(int index, T? item)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
-
             string? prevId = index > 0 ? _list[index - 1].Id : null;
             string? nextId = index < _list.Count ? _list[index].Id : null;
-
-            Span<char> rankBuffer = stackalloc char[128];
-            int rankLen = LexoRank.Generate(
-                prevId.AsSpan(), nextId.AsSpan(),
-                DEFAULT_PRECISION_DIGITS, rankBuffer);
-            var id = new string(rankBuffer.Slice(0, rankLen));
+            var id = GenerateIdBetween(prevId, nextId);
 
             if (item != null)
                 item.SvId = id;
 
-            var lexoPart = id.AsSpan();
-            int sepIdx = lexoPart.IndexOf('~');
-            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > REBALANCE_LENGTH_THRESHOLD)
+            if (ShouldRebalance(id))
                 _needsRebalance = true;
 
             _list.Insert(index, new Slot(id, item, item == null, true));
-            OnItemSet(item, index);
+            TryWatch(item);
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
         }
 
         public void InsertRange(int index, IList<T?> collection)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
-            Span<char> rankBuffer = stackalloc char[128];
             for (var i = 0; i < collection.Count; i++)
             {
                 var item = collection[i];
                 string? prevId = (index + i) > 0 ? _list[index + i - 1].Id : null;
                 string? nextId = (index + i) < _list.Count ? _list[index + i].Id : null;
-                int rankLen = LexoRank.Generate(
-                    prevId.AsSpan(), nextId.AsSpan(),
-                    DEFAULT_PRECISION_DIGITS, rankBuffer);
-                var id = new string(rankBuffer.Slice(0, rankLen));
+                var id = GenerateIdBetween(prevId, nextId);
                 if (item != null)
                     item.SvId = id;
+                if (ShouldRebalance(id))
+                    _needsRebalance = true;
                 _list.Insert(index + i, new Slot(id, item, item == null, true));
-                OnItemSet(item, index + i);
+                TryWatch(item);
             }
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, collection, index));
         }
 
         public override bool Remove(T? item)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var index = IndexOf(item);
             if (index >= 0)
             {
@@ -391,8 +336,6 @@ namespace Salvavida
 
         public void RemoveRange(int index, int count)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var arr = new T?[count];
             for (int i = 0; i < count; i++)
             {
@@ -410,8 +353,6 @@ namespace Salvavida
 
         public override void RemoveAt(int index)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var slot = _list[index];
             if (!string.IsNullOrEmpty(slot.Id))
                 _idsDeleted.Add(slot.Id);
@@ -422,8 +363,6 @@ namespace Salvavida
 
         public void Move(int oldIndex, int newIndex)
         {
-            if (_list == null)
-                throw new NullReferenceException(nameof(_list));
             var slot = _list[oldIndex];
             RemoveAt(oldIndex);
             Insert(newIndex, slot.Value);

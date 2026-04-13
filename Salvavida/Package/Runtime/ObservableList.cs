@@ -2,7 +2,6 @@ using Salvavida.DefaultImpl;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Salvavida
 {
@@ -142,15 +141,13 @@ namespace Salvavida
             for (var i = 0; i < collection.Count; i++)
             {
                 var item = collection[i];
-                OnItemSet(item, index);
+                OnItemSet(item, index + i);
             }
             OnCollectionChange(CollectionChangeInfo<ObservableList<T>, T?>.Add(this, collection, index));
         }
 
         private void OnItemSet(T? item, int index)
         {
-            //if (_orderMatters && item is ISaveWithOrder swo)
-            //    swo.SvOrder = index;
             if (item is ISavable sv)
                 sv.SvId ??= DefaultIdGenerator.Default.GetId();
             TryWatch(item);

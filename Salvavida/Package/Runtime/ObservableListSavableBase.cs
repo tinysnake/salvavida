@@ -12,9 +12,32 @@ namespace Salvavida
     public abstract class ObservableListSavableBase<T> : ObservableCollectionSavable<ObservableListSavableBase<T>, T>, IList<T?>, IReadOnlyList<T?>, IList
         where T : ISavable
     {
+        protected const int DEFAULT_PRECISION_DIGITS = 2;
+        protected const int REBALANCE_LENGTH_THRESHOLD = 10;
+
         protected ObservableListSavableBase(string propName, bool saveSeparately)
             : base(propName, saveSeparately)
         {
+        }
+
+        protected static string GenerateIdBetween(string? prevId, string? nextId)
+        {
+            Span<char> rankBuffer = stackalloc char[128];
+            int rankLen = LexoRank.Generate(prevId.AsSpan(), nextId.AsSpan(), DEFAULT_PRECISION_DIGITS, rankBuffer);
+            return new string(rankBuffer.Slice(0, rankLen));
+        }
+
+        protected static bool ShouldRebalance(string id)
+        {
+            var lexoPart = id.AsSpan();
+            int sepIdx = lexoPart.IndexOf('~');
+            return sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > REBALANCE_LENGTH_THRESHOLD;
+        }
+
+        protected static void SaveMetadata(Serializer serializer, SerializeContext ctx, int count)
+        {
+            var meta = new CollectionMetadata { Count = count };
+            serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
         }
 
         #region Abstract Methods

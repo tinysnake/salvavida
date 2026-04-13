@@ -21,9 +21,6 @@ namespace Salvavida
         private bool _needsRebalance;
         private uint _version;
 
-        private const int DEFAULT_PRECISION_DIGITS = 2;
-        private const int REBALANCE_LENGTH_THRESHOLD = 10;
-
         public ObservableListSavableLazy(string propName, bool saveSeparately, CollectionOptions options)
             : base(propName, saveSeparately)
         {
@@ -48,9 +45,6 @@ namespace Salvavida
                 _lock.EnterReadLock();
                 try
                 {
-                    if (_slots == null)
-                        return false;
-
                     foreach (var slot in _slots)
                     {
                         if (slot.IsTrueDirty)
@@ -71,7 +65,7 @@ namespace Salvavida
             _lock.EnterReadLock();
             try
             {
-                return _slots != null && index < _slots.Count && _slots[index].IsLoaded;
+                return index < _slots.Count && _slots[index].IsLoaded;
             }
             finally { _lock.ExitReadLock(); }
         }
@@ -145,9 +139,6 @@ namespace Salvavida
             _lock.EnterReadLock();
             try
             {
-                if (_slots == null)
-                    return false;
-
                 foreach (var slot in _slots)
                 {
                     if (slot.IsLoaded && EqualityComparer<T?>.Default.Equals(slot.Value, item))
@@ -163,9 +154,6 @@ namespace Salvavida
             _lock.EnterReadLock();
             try
             {
-                if (_slots == null)
-                    return -1;
-
                 for (int i = 0; i < _slots.Count; i++)
                 {
                     if (_slots[i].IsLoaded && EqualityComparer<T?>.Default.Equals(_slots[i].Value, item))
@@ -198,10 +186,9 @@ namespace Salvavida
             _lock.EnterUpgradeableReadLock();
             try
             {
-                if (_slots == null || _slots.Count == 0)
+                if (_slots.Count == 0)
                 {
-                    var meta = new CollectionMetadata { Count = _count };
-                    serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                    SaveMetadata(serializer, ctx, _count);
                     return;
                 }
 
@@ -214,8 +201,7 @@ namespace Salvavida
                     SerializeDirtyItems(serializer, ctx);
                 }
 
-                var metaOut = new CollectionMetadata { Count = _count };
-                serializer.Save(metaOut, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                SaveMetadata(serializer, ctx, _count);
             }
             finally { _lock.ExitUpgradeableReadLock(); }
         }
@@ -276,7 +262,7 @@ namespace Salvavida
                     item.Serialize(serializer, ctx);
                 }
 
-                SaveMetadata(serializer, ctx);
+                SaveMetadata(serializer, ctx, _count);
 
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
             }
@@ -288,22 +274,17 @@ namespace Salvavida
             _lock.EnterWriteLock();
             try
             {
-                if (_slots != null)
+                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+                using var locker = serializer.BeginFreshAction(this, out var ctx);
+
+                foreach (var slot in _slots)
                 {
-                    // Immediate sync - delete all from serializer
-                    var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
-                    using var locker = serializer.BeginFreshAction(this, out var ctx);
-
-                    foreach (var slot in _slots)
-                    {
-                        if (!string.IsNullOrEmpty(slot.Id))
-                            serializer.Delete(ctx, slot.Id, PathBuilder.Type.Collection);
-                        TryUnWatch(slot.Value);
-                    }
-
-                    _slots.Clear();
+                    if (!string.IsNullOrEmpty(slot.Id))
+                        serializer.Delete(ctx, slot.Id, PathBuilder.Type.Collection);
+                    TryUnWatch(slot.Value);
                 }
 
+                _slots.Clear();
                 _count = 0;
                 _loadedCount = 0;
                 _version++;
@@ -312,13 +293,7 @@ namespace Salvavida
 
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
 
-                // Save empty meta
-                var serializer2 = this.GetSerializer();
-                if (serializer2 != null)
-                {
-                    using var locker = serializer2.BeginFreshAction(this, out var ctx);
-                    SaveMetadata(serializer2, ctx);
-                }
+                SaveMetadata(serializer, ctx, _count);
             }
             finally { _lock.ExitWriteLock(); }
         }
@@ -343,8 +318,8 @@ namespace Salvavida
 
                 TryWatch(item);
 
-                // Check if rebalance needed
-                CheckRebalanceNeeded(id);
+                if (ShouldRebalance(id))
+                    _needsRebalance = true;
 
                 // Immediate sync to serializer
                 var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
@@ -358,7 +333,7 @@ namespace Salvavida
                     item.Serialize(serializer, ctx);
                 }
 
-                SaveMetadata(serializer, ctx);
+                SaveMetadata(serializer, ctx, _count);
 
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Add(this, item, index));
             }
@@ -409,7 +384,7 @@ namespace Salvavida
 
                 if (list != null && list.Count > 0)
                 {
-                    _slots ??= new List<Slot>(list.Count);
+                    _slots.Capacity = list.Count;
                     var id = LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS);
 
                     for (int i = 0; i < list.Count; i++)
@@ -437,7 +412,6 @@ namespace Salvavida
                 }
                 else
                 {
-                    _slots.Clear();
                     _count = 0;
                     _loadedCount = 0;
                 }
@@ -445,7 +419,7 @@ namespace Salvavida
                 _isDirty = true;
                 _needsRebalance = false;
 
-                SaveMetadata(serializer, ctx);
+                SaveMetadata(serializer, ctx, _count);
                 OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Reset(this));
             }
             finally { _lock.ExitWriteLock(); }
@@ -617,39 +591,16 @@ namespace Salvavida
 
         private string GenerateIdForIndex(int index)
         {
-            if (_slots == null || _slots.Count == 0)
+            if (_slots.Count == 0)
                 return LexoRank.GetInitValue(DEFAULT_PRECISION_DIGITS);
 
             string? prevId = index > 0 ? _slots[index - 1].Id : null;
             string? nextId = index < _slots.Count ? _slots[index].Id : null;
-
             return GenerateIdBetween(prevId, nextId);
-        }
-
-        private string GenerateIdBetween(string? prevId, string? nextId)
-        {
-            Span<char> rankBuffer = stackalloc char[128];
-            int rankLen = LexoRank.Generate(
-                prevId.AsSpan(),
-                nextId.AsSpan(),
-                DEFAULT_PRECISION_DIGITS,
-                rankBuffer);
-            return new string(rankBuffer.Slice(0, rankLen));
-        }
-
-        private void CheckRebalanceNeeded(string id)
-        {
-            var lexoPart = id.AsSpan();
-            int sepIdx = lexoPart.IndexOf('~');
-            if (sepIdx >= 0 && lexoPart.Length - sepIdx - 1 > REBALANCE_LENGTH_THRESHOLD)
-                _needsRebalance = true;
         }
 
         private int IndexOfInternal(T? item)
         {
-            if (_slots == null)
-                return -1;
-
             for (int i = 0; i < _slots.Count; i++)
             {
                 if (_slots[i].IsLoaded && EqualityComparer<T?>.Default.Equals(_slots[i].Value, item))
@@ -677,7 +628,7 @@ namespace Salvavida
 
             TryUnWatch(slot.Value);
 
-            SaveMetadata(serializer, ctx);
+            SaveMetadata(serializer, ctx, _count);
 
             OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Remove(this, slot.Value, index));
         }
@@ -686,12 +637,6 @@ namespace Salvavida
         {
             if (index < 0 || index >= _count)
                 throw new ArgumentOutOfRangeException(nameof(index), $"Index {index} is out of range. Count: {_count}");
-        }
-
-        private void SaveMetadata(Serializer serializer, SerializeContext ctx)
-        {
-            var meta = new CollectionMetadata { Count = _count };
-            serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
         }
 
         private void SerializeWithRebalance(Serializer serializer, SerializeContext ctx)
