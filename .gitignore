@@ -13,3 +13,10 @@ Salvavida.Benchmarks/BenchmarkDotNet.Artifacts/
 Salvavida.Tests/Generated/
 Salvavida.Generator.Debug/Generated/
 Salvavida.Generator.Debug/salvavida.output.log
+
+#ai agents
+.claude
+.opencode
+
+AGENTS.md
+CLAUDE.md

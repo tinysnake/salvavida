@@ -19,6 +19,7 @@ namespace Salvavida
         private int _count;
         private int _loadedCount;
         private bool _needsRebalance;
+        private uint _version;
 
         private const int DEFAULT_PRECISION_DIGITS = 2;
         private const int REBALANCE_LENGTH_THRESHOLD = 10;
@@ -84,7 +85,9 @@ namespace Salvavida
                 _lock.EnterUpgradeableReadLock();
                 try
                 {
-                    if (_slots![index].IsLoaded)
+                    EnsureSlotCapacity(index);
+
+                    if (_slots[index].IsLoaded)
                         return _slots[index].Value;
 
                     _lock.EnterWriteLock();
@@ -104,7 +107,9 @@ namespace Salvavida
                 _lock.EnterWriteLock();
                 try
                 {
-                    var oldValue = _slots![index].Value;
+                    EnsureSlotCapacity(index);
+
+                    var oldValue = _slots[index].Value;
                     var oldId = _slots[index].Id;
 
                     _slots[index] = new Slot(oldId, value, true, true);
@@ -128,6 +133,7 @@ namespace Salvavida
                         value.Serialize(serializer, ctx);
                     }
 
+                    _version++;
                     OnCollectionChange(CollectionChangeInfo<ObservableListSavableBase<T>, T?>.Replace(this, oldValue, value, index));
                 }
                 finally { _lock.ExitWriteLock(); }
@@ -189,7 +195,7 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            _lock.EnterReadLock();
+            _lock.EnterUpgradeableReadLock();
             try
             {
                 if (_slots == null || _slots.Count == 0)
@@ -211,17 +217,20 @@ namespace Salvavida
                 var metaOut = new CollectionMetadata { Count = _count };
                 serializer.Save(metaOut, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
             }
-            finally { _lock.ExitReadLock(); }
+            finally { _lock.ExitUpgradeableReadLock(); }
         }
 
         public override IEnumerator<T?> GetEnumerator()
         {
+            var version = _version;
             for (int i = 0; i < _count; i++)
             {
+                if(version!= _version)
+                    throw new InvalidOperationException("collection was modified");
                 _lock.EnterUpgradeableReadLock();
                 try
                 {
-                    if (_slots == null || !_slots[i].IsLoaded)
+                    if (_slots.Count <= i || !_slots[i].IsLoaded)
                     {
                         _lock.EnterWriteLock();
                         try
@@ -231,7 +240,7 @@ namespace Salvavida
                         finally { _lock.ExitWriteLock(); }
                     }
 
-                    yield return _slots![i].Value;
+                    yield return _slots[i].Value;
                 }
                 finally { _lock.ExitUpgradeableReadLock(); }
             }
@@ -242,7 +251,7 @@ namespace Salvavida
             _lock.EnterWriteLock();
             try
             {
-                var index = _slots!.Count;
+                var index = _slots.Count;
                 var id = GenerateIdForIndex(index);
 
                 if (item != null)
@@ -251,6 +260,7 @@ namespace Salvavida
                 _slots.Add(new Slot(id, item, true, true));
                 _count++;
                 _loadedCount++;
+                _version++;
 
                 TryWatch(item);
 
@@ -296,6 +306,7 @@ namespace Salvavida
 
                 _count = 0;
                 _loadedCount = 0;
+                _version++;
                 _isDirty = true;
                 _needsRebalance = false;
 
@@ -317,8 +328,8 @@ namespace Salvavida
             _lock.EnterWriteLock();
             try
             {
-                string? prevId = index > 0 ? _slots![index - 1].Id : null;
-                string? nextId = index < _slots!.Count ? _slots[index].Id : null;
+                string? prevId = index > 0 ? _slots[index - 1].Id : null;
+                string? nextId = index < _slots.Count ? _slots[index].Id : null;
 
                 var id = GenerateIdBetween(prevId, nextId);
 
@@ -328,6 +339,7 @@ namespace Salvavida
                 _slots.Insert(index, new Slot(id, item, true, true));
                 _count++;
                 _loadedCount++;
+                _version++;
 
                 TryWatch(item);
 
@@ -467,16 +479,23 @@ namespace Salvavida
         /// </summary>
         public void LoadAll()
         {
+            var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
+            using var locker = serializer.BeginFreshAction(this, out var ctx);
+            LoadAll(serializer, ctx);
+        }
+
+        private void LoadAll(Serializer serializer, SerializeContext ctx)
+        {
             _lock.EnterWriteLock();
             try
             {
                 if (_count == 0)
                     return;
 
-                var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
-                using var locker = serializer.BeginFreshAction(this, out var ctx);
 
-                for (int i = 0; i < _slots!.Count; i++)
+                EnsureSlotCapacity(_count);
+
+                for (int i = 0; i < _count; i++)
                 {
                     if (!_slots[i].IsLoaded)
                         LoadSlotByIndexInternal(i, serializer, ctx);
@@ -487,6 +506,16 @@ namespace Salvavida
 
         #region Private Methods
 
+        private void EnsureSlotCapacity(int index)
+        {
+            // Ensure _slots has at least index + 1 elements
+            // This handles the case after Deserialize where _slots.Count might be less than _count
+            while (_slots.Count <= index && _slots.Count < _count)
+            {
+                _slots.Add(new Slot(string.Empty, default, false, false));
+            }
+        }
+
         private void LoadSlotByIndex(int index)
         {
             var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
@@ -496,7 +525,9 @@ namespace Salvavida
 
         private void LoadSlotByIndexInternal(int index, Serializer serializer, SerializeContext ctx)
         {
-            if (_slots![index].IsLoaded)
+            EnsureSlotCapacity(index);
+
+            if (_slots[index].IsLoaded)
                 return;
 
             if (_options.Mode == LazyLoadMode.LoadAll)
@@ -526,8 +557,15 @@ namespace Salvavida
                 int skip = index - prevIndex - 1;
                 int loaded = 0;
 
+                int idIndex = 0;
                 foreach (var id in ids)
                 {
+                    if (idIndex < skip)
+                    {
+                        idIndex++;
+                        continue;
+                    }
+
                     var slotIndex = index + loaded;
                     if (slotIndex >= endIndex)
                         break;
@@ -547,21 +585,33 @@ namespace Salvavida
 
         private void LoadAllInternal(Serializer serializer, SerializeContext ctx)
         {
-            foreach (var id in serializer.ListCollectionIds(ctx))
+            _slots.Capacity = _count;
+            EnsureSlotCapacity(_count);
+
+            var ids = serializer.ListCollectionIds(ctx);
+            int slotIndex = 0;
+
+            foreach (var id in ids)
             {
-                // Find slot by ID
-                for (int i = 0; i < _slots!.Count; i++)
+                // Find the next empty/unloaded slot
+                while (slotIndex < _slots.Count && _slots[slotIndex].IsLoaded)
                 {
-                    if (_slots[i].Id == id && !_slots[i].IsLoaded)
-                    {
-                        var item = serializer.Read<T>(ctx, id, PathBuilder.Type.Collection);
-                        _slots[i] = new Slot(id, item, false, true);
-                        if (item != null)
-                            OnChildDeserialized(item);
-                        _loadedCount++;
-                        break;
-                    }
+                    slotIndex++;
                 }
+
+                if (slotIndex >= _slots.Count)
+                    break;
+
+                // Load the item into this slot
+                var item = serializer.Read<T>(ctx, id, PathBuilder.Type.Collection);
+                _slots[slotIndex] = new Slot(id, item, false, true);
+                if (item != null)
+                {
+                    item.SvId = id;
+                    OnChildDeserialized(item);
+                }
+                _loadedCount++;
+                slotIndex++;
             }
         }
 
@@ -610,7 +660,7 @@ namespace Salvavida
 
         private void RemoveAtInternal(int index)
         {
-            var slot = _slots![index];
+            var slot = _slots[index];
 
             // Immediate sync - delete from serializer
             var serializer = this.GetSerializer() ?? throw new NullReferenceException("Serializer not available.");
@@ -621,6 +671,7 @@ namespace Salvavida
 
             _slots.RemoveAt(index);
             _count--;
+            _version++;
             if (slot.IsLoaded)
                 _loadedCount--;
 
@@ -645,42 +696,43 @@ namespace Salvavida
 
         private void SerializeWithRebalance(Serializer serializer, SerializeContext ctx)
         {
-            var precisionDigits = Math.Max(DEFAULT_PRECISION_DIGITS, LexoRank.CalculatePrecisionDigits(_slots!.Count));
+            var precisionDigits = Math.Max(DEFAULT_PRECISION_DIGITS, LexoRank.CalculatePrecisionDigits(_slots.Count));
             var initRank = LexoRank.GetInitValue(precisionDigits);
             var rank = LexoRank.Rebalance(initRank, _slots.Count, out int step, out bool _);
+
+            LoadAll(serializer, ctx);
+
+            serializer.DeleteAllNoPushPath(ctx);
 
             for (int i = 0; i < _slots.Count; i++)
             {
                 var slot = _slots[i];
-                var oldId = slot.Id;
                 var newId = rank;
-
-                // Delete old ID
-                if (!string.IsNullOrEmpty(oldId))
-                    serializer.Delete(ctx, oldId, PathBuilder.Type.Collection);
-
                 // Write new ID
-                if (slot.IsLoaded && slot.Value != null)
+                using (ctx.Path.UsePush(newId, PathBuilder.Type.Collection))
                 {
-                    slot.Value.SvId = newId;
-                    using var _ = ctx.Path.UsePush(newId, PathBuilder.Type.Collection);
-                    slot.Value.Serialize(serializer, ctx);
-                }
-                else
-                {
-                    serializer.Save<T?>(default, ctx, newId, PathBuilder.Type.Collection);
+                    if (slot.IsLoaded && slot.Value != null)
+                    {
+                        slot.Value.SvId = newId;
+                        slot.Value.Serialize(serializer, ctx);
+                    }
+                    else
+                    {
+                        serializer.SaveNoPushPath<T?>(default, ctx);
+                    }
                 }
 
                 _slots[i] = new Slot(newId, slot.Value, false, slot.IsLoaded);
                 rank = LexoRank.Generate(rank, null, precisionDigits, stepSize: step);
             }
+            _version++;
 
             _needsRebalance = false;
         }
 
         private void SerializeDirtyItems(Serializer serializer, SerializeContext ctx)
         {
-            for (int i = 0; i < _slots!.Count; i++)
+            for (int i = 0; i < _slots.Count; i++)
             {
                 var slot = _slots[i];
                 if (!slot.IsTrueDirty)

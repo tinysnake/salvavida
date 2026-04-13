@@ -123,7 +123,7 @@ namespace Salvavida.Tests
                 .Select(key => key[basePath.Length..])
                 .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
                 .Distinct()
-                .OrderBy(id => id);
+                .OrderBy(id => id, StringComparer.Ordinal);
         }
 
         public override IEnumerable<string> ListCollectionIdsPrefix(SerializeContext ctx, string prefix)
@@ -135,7 +135,7 @@ namespace Salvavida.Tests
                 .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
                 .Where(key=>string.Compare(key, prefix, StringComparison.Ordinal) >= 0)
                 .Distinct()
-                .OrderBy(id => id);
+                .OrderBy(id => id, StringComparer.Ordinal);
         }
 
         public override IEnumerable<string> ListCollectionIdsMinMax(SerializeContext ctx, string? minValue, string? maxValue)
@@ -146,11 +146,11 @@ namespace Salvavida.Tests
                 .Where(key => key.AsSpan().StartsWith(basePath.AsSpan(), StringComparison.Ordinal))
                 .Select(key => key[basePath.Length..])
                 .Where(key => !key.Contains('/')) // Only consider direct children, ignore deeper nested paths
-                .Where(key=> 
-                    (string.IsNullOrEmpty(minValue) || string.CompareOrdinal(minValue, key) >= 0) &&
-                    (string.IsNullOrEmpty(maxValue) || string.CompareOrdinal(maxValue, key) < 0))
+                .Where(key=>
+                    (string.IsNullOrEmpty(minValue) || string.CompareOrdinal(minValue, key) < 0) &&
+                    (string.IsNullOrEmpty(maxValue) || string.CompareOrdinal(maxValue, key) > 0))
                 .Distinct()
-                .OrderBy(id => id);
+                .OrderBy(id => id, StringComparer.Ordinal);
         }
 
         #endregion

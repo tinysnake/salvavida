@@ -171,8 +171,8 @@ namespace Salvavida.Tests
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
             ctx.Path.Push("items", PathBuilder.Type.Property);
-            ctx.Path.Push("1~V4", PathBuilder.Type.Collection);
-            serializer.SaveNoPushPath("value4", ctx);
+            ctx.Path.Push("1~Vz", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value7", ctx);
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
@@ -182,14 +182,35 @@ namespace Salvavida.Tests
 
             ctx.Path.Clear();
             ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~Vd", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value5", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~VV", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value4", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
+            ctx.Path.Push("items", PathBuilder.Type.Property);
+            ctx.Path.Push("0~Vl", PathBuilder.Type.Collection);
+            serializer.SaveNoPushPath("value6", ctx);
+
+            ctx.Path.Clear();
+            ctx.Path.Push("user", PathBuilder.Type.Property);
             var ids = serializer.ListCollectionIds(ctx, "items");
 
             var idList = new System.Collections.Generic.List<string>(ids);
-            Assert.Equal(4, idList.Count);
+            Assert.Equal(7, idList.Count);
             Assert.Equal("0~V1", idList[0]);
             Assert.Equal("0~V2", idList[1]);
             Assert.Equal("0~V3", idList[2]);
-            Assert.Equal("1~V4", idList[3]);
+            Assert.Equal("0~VV", idList[3]);
+            Assert.Equal("0~Vd", idList[4]);
+            Assert.Equal("0~Vl", idList[5]);
+            Assert.Equal("1~Vz", idList[6]);
         }
 
         [Fact]
