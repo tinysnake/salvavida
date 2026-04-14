@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace Salvavida
@@ -16,9 +17,9 @@ namespace Salvavida
         where TKey : notnull
         where TValue : ISavable?
     {
-        private Dictionary<TKey, Slot> _loadedSlots;
+        private readonly Dictionary<TKey, Slot> _loadedSlots;
         private readonly CollectionOptions _options;
-        private readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
+        private readonly ReaderWriterLockSlim _lock = new();
         private int _count;
         private uint _version;   // incremented only by mutating operations
         private Serializer? _serializer;
@@ -72,15 +73,15 @@ namespace Salvavida
                 _lock.EnterWriteLock();
                 try
                 {
-                    // Iterating .Keys and updating values for existing keys is safe:
+                    // Iterating KVPs and updating values for existing keys is safe:
                     // Dictionary._version is only incremented on add/remove, not value updates.
-                    foreach (var key in _loadedSlots.Keys)
+                    foreach (var kvp in _loadedSlots)
                     {
-                        var slot = _loadedSlots[key];
+                        var slot = kvp.Value;
                         if (slot.IsLoaded)
                         {
                             slot.Value?.SetDirty(dirty, recursive);
-                            _loadedSlots[key] = new Slot(slot.Id, slot.Value, dirty, slot.IsLoaded);
+                            _loadedSlots[kvp.Key] = new Slot(slot.Id, slot.Value, dirty, slot.IsLoaded);
                         }
                     }
                 }
@@ -584,7 +585,7 @@ namespace Salvavida
                 {
                     var serializer = _owner.GetSerializer();
                     using var locker = serializer.BeginFreshAction(_owner, out var ctx);
-                    ids = System.Linq.Enumerable.ToArray(serializer.ListCollectionIds(ctx));
+                    ids = serializer.ListCollectionIds(ctx).ToArray();
                 }
                 foreach (var id in ids)
                     yield return _owner._idConverter.ConvertFrom(id);
@@ -620,7 +621,7 @@ namespace Salvavida
 
             public IEnumerator<TValue?> GetEnumerator()
             {
-                foreach (var kvp in (System.Collections.Generic.IEnumerable<KeyValuePair<TKey, TValue?>>)_owner)
+                foreach (var kvp in _owner)
                     yield return kvp.Value;
             }
 
