@@ -77,10 +77,11 @@ private Dictionary<TKey, Slot> _loadedSlots;
 private readonly CollectionOptions _options;
 private readonly ReaderWriterLockSlim _lock;
 private int _count;         // total count from metadata, includes unloaded entries
-private int _loadedCount;
 private uint _version;      // incremented only by Add, Remove, Clear, SwapSource, indexer set
 private Serializer? _serializer;
 ```
+
+`_loadedCount` is **not** tracked — it is derivable from `_loadedSlots.Count` at any time and adds maintenance overhead without benefit.
 
 `Slot` is the existing struct from `ObservableCollectionSavable` (Id/Value/IsDirty/IsLoaded).
 
@@ -96,7 +97,6 @@ Caches `parent?.GetSerializer()` into `_serializer`, same as List/Array lazy.
 Deserialize(serializer, ctx):
   read CollectionMetadata → _count
   clear _loadedSlots
-  _loadedCount = 0
   _isDirty = false
 ```
 
@@ -210,13 +210,28 @@ The result is best-effort consistent: a concurrent `Add`/`Remove` between the re
 serializer.BeginFreshAction(this, out ctx)   // no collection lock held — read-path fallback
 return serializer.ListCollectionIds(ctx)
     .Select(id => _idConverter.ConvertFrom(id))
-    .ToList()
 ```
 
+- Returns `IEnumerable<TKey>` — no `.ToList()`, no snapshot allocation.
 - Always reads from the serializer; **never cached**.
 - Does not trigger `LoadAll()` in either mode.
 - Only ID metadata is read — no values are loaded.
-- Returns a **snapshot** `List<TKey>` (not a live view). Unlike `ObservableDictionarySavable.Keys` which returns a live `Dictionary.KeyCollection`, mutations after the call are not reflected in the returned list.
+- The abstract `Keys` property in the base class returns `ICollection<TKey>` (from `IDictionary`). The lazy implementation satisfies this by returning a lazy `IEnumerable<TKey>` wrapped in a no-alloc adapter, or by materializing only on `ICollection<TKey>` explicit interface usage. The concrete property can return `IEnumerable<TKey>` directly if the abstract is declared with a covariant return or via explicit implementation.
+
+### Private Helper: `LoadSlotInternal`
+
+All three load paths (indexer, BatchLoad, LoadAll) share the same read-and-register logic. Extract to a private method called under write lock:
+
+```
+// Precondition: write lock held, slot not yet loaded
+LoadSlotInternal(serializer, ctx, key, id):
+  item = serializer.Read<TValue>(ctx, id, Collection)
+  _loadedSlots[key] = new Slot(id, item, false, true)
+  if item != null: OnChildDeserialized(item)
+  return item
+```
+
+Callers are responsible for acquiring the write lock and for passing a valid `ctx` from an active `BeginFreshAction`.
 
 ### Indexer Load (LoadIndividual)
 
@@ -226,10 +241,7 @@ this[key] get:
   if _loadedSlots.TryGetValue(key, out slot) && slot.IsLoaded → ExitUpgradeable; return slot.Value
   EnterWriteLock
   id = _idConverter.ConvertTo(key)
-  item = serializer.Read<TValue>(ctx, id, Collection)
-  _loadedSlots[key] = new Slot(id, item, false, true)
-  if item != null: OnChildDeserialized(item)
-  _loadedCount++
+  item = LoadSlotInternal(serializer, ctx, key, id)
   ExitWriteLock
   ExitUpgradeableReadLock
   return item
@@ -258,10 +270,7 @@ loop:
       yield KeyValuePair(key, slot.Value)
     else:
       EnterWriteLock
-      item = serializer.Read<TValue>(ctx, id, Collection)
-      _loadedSlots[key] = new Slot(id, item, false, true)
-      if item != null: OnChildDeserialized(item)
-      _loadedCount++
+      item = LoadSlotInternal(serializer, ctx, key, id)
       ExitWriteLock
       yield KeyValuePair(key, item)
     ExitUpgradeableReadLock
@@ -283,7 +292,6 @@ foreach (key, slot) in _loadedSlots:
     serializer.Delete(ctx, slot.Id, Collection)
 _loadedSlots.Clear()
 _count = 0
-_loadedCount = 0
 
 // 2. Add new items
 if dict != null:
@@ -295,7 +303,6 @@ if dict != null:
     else: push id → value.Serialize(serializer, ctx)
     TryWatch(value)
   _count = dict.Count
-  _loadedCount = dict.Count
 
 _isDirty = true
 _version++
@@ -320,10 +327,7 @@ LoadAll():
   foreach id in serializer.ListCollectionIds(ctx):
     key = _idConverter.ConvertFrom(id)
     if !_loadedSlots.TryGetValue(key, out slot) || !slot.IsLoaded:
-      item = serializer.Read<TValue>(ctx, id, Collection)
-      _loadedSlots[key] = new Slot(id, item, false, true)
-      if item != null: OnChildDeserialized(item)
-      _loadedCount++
+      LoadSlotInternal(serializer, ctx, key, id)
   ExitWriteLock
 ```
 
@@ -334,7 +338,7 @@ Lock-acquisition order: write lock first, then `BeginFreshAction`. All mutating 
 ```csharp
 public bool IsLoaded(TKey key)   // check if key's value is in _loadedSlots and IsLoaded=true
 public void LoadAll()             // force load all entries via serializer.ListCollectionIds
-public int LoadedCount => _loadedCount;
+public int LoadedCount => _loadedSlots.Count;  // derived from _loadedSlots, no separate counter
 ```
 
 ### Thread Safety
