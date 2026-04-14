@@ -127,12 +127,13 @@ namespace Salvavida
 
             SwapSource(null, false);
             var arr = new T?[metadata.Count];
-            // var idConverter = SvIdConverter.GetConverter<int>() ?? throw new InvalidOperationException($"No SvId converter found for type int, which is required for deserializing {GetType().FullName}");
-            var index = 0;
+
             foreach (var id in serializer.ListCollectionIds(ctx))
             {
+                if(!int.TryParse(id, out var index))
+                    throw new FormatException("invalid format for a int typed index value");
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
-                arr[index++] = item;
+                arr[index] = item;
                 if (item != null)
                 {
                     item.SvId = id;
