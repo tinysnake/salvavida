@@ -455,7 +455,7 @@ namespace Salvavida.Generator
                     {
                         CollectionType.Array => $"ObservableArraySavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
                         CollectionType.List => $"ObservableListSavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
-                        CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                        CollectionType.Dictionary => $"ObservableDictionarySavableLazy<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                         _ => throw new NotSupportedException()
                     };
                 }
@@ -501,7 +501,7 @@ namespace Salvavida.Generator
                 {
                     CollectionType.Array => $"ObservableArraySavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
                     CollectionType.List => $"ObservableListSavableLazy<{typeSymbols[0].ToDisplayString(format)}>",
-                    CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionarySavableLazy<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                     _ => throw new NotSupportedException()
                 };
             }
@@ -538,12 +538,12 @@ namespace Salvavida.Generator
                 // ISavable: Must use the base class type that satisfies the CRTP constraint
                 // ObservableArraySavableBase<T> : ObservableCollection<ObservableArraySavableBase<T>, T>
                 // ObservableListSavableBase<T> : ObservableCollection<ObservableListSavableBase<T>, T>
-                // ObservableDictionarySavable<K,V> already satisfies the constraint (no CRTP intermediate layer)
+                // ObservableDictionarySavableBase<K,V> : ObservableCollection<ObservableDictionarySavableBase<K,V>, V>
                 return colType switch
                 {
                     CollectionType.Array => $"ObservableArraySavableBase<{typeSymbols[0].ToDisplayString(format)}>",
                     CollectionType.List => $"ObservableListSavableBase<{typeSymbols[0].ToDisplayString(format)}>",
-                    CollectionType.Dictionary => $"ObservableDictionarySavable<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
+                    CollectionType.Dictionary => $"ObservableDictionarySavableBase<{typeSymbols[0].ToDisplayString(format)}, {typeSymbols[1].ToDisplayString(format)}>",
                     _ => throw new NotSupportedException()
                 };
             }
