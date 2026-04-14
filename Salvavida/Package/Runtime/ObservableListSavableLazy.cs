@@ -35,10 +35,14 @@ namespace Salvavida
         protected override void SetParent(ISavable? parent)
         {
             base.SetParent(parent);
-            _serializer = parent?.GetSerializer();
+            _serializer = null;
         }
 
-        private Serializer GetSerializer() => _serializer ?? throw new NullReferenceException("Serializer not available.");
+        private Serializer GetSerializer()
+        {
+            _serializer ??= SvHelper.GetSerializer(this) ??throw new NullReferenceException("Serializer not available.");
+            return _serializer;
+        }
 
         public override int Count => _count;
 

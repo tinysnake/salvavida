@@ -32,10 +32,14 @@ namespace Salvavida
         protected override void SetParent(ISavable? parent)
         {
             base.SetParent(parent);
-            _serializer = parent?.GetSerializer();
+            _serializer = null;
         }
 
-        private Serializer GetSerializer() => _serializer ?? throw new NullReferenceException("Serializer not available.");
+        private Serializer GetSerializer()
+        {
+            _serializer ??= SvHelper.GetSerializer(this) ?? throw new NullReferenceException("Serializer not available.");
+            return _serializer;
+        }
 
         public override int Count => _count;
 
@@ -343,9 +347,10 @@ namespace Salvavida
 
                 foreach (var id in serializer.ListCollectionIdsMinMax(ctx, startId, null))
                 {
-                    var slotIndex = index + loaded;
-                    if (slotIndex >= endIndex)
+                    if(loaded>=batchCount)
                         break;
+                    if (!int.TryParse(id, out var slotIndex))
+                        throw new FormatException($"id is not a valid number: {id}");
 
                     if (!_slots[slotIndex].IsLoaded)
                     {

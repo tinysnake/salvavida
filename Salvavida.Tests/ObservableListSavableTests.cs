@@ -65,7 +65,7 @@ namespace Salvavida.Tests
         public void Serialize_EmptyList_SavesMetadata()
         {
             var serializer = new InMemorySerializer();
-            var list = CreateRootedList(serializer, null);
+            var list = CreateRootedList(serializer, []);
 
             // Serialize empty list
             using (serializer.BeginFreshAction(list, out var ctx))
@@ -77,6 +77,20 @@ namespace Salvavida.Tests
                     var meta = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
                     Assert.Equal(0, meta.Count);
                 }
+            }
+        }
+
+        [Fact]
+        public void Serialize_NullList_WontSaveMetadata()
+        {
+            var serializer = new InMemorySerializer();
+            var list = CreateRootedList(serializer, null);
+
+            // Serialize empty list
+            using (serializer.BeginFreshAction(list, out var ctx))
+            {
+                list.Serialize(serializer, ctx);
+                Assert.False(serializer.Has(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property));
             }
         }
 
@@ -318,8 +332,9 @@ namespace Salvavida.Tests
             var list = CreateRootedList(serializer, [CreateTestItem(1, "Item1"), CreateTestItem(2, "Item2")]);
 
             list.SwapSource(null);
-
-            Assert.Equal(0, list.Count);
+            
+            Assert.Throws<NullReferenceException>(()=>
+                Assert.Equal(0, list.Count));
         }
 
         [Fact]
@@ -355,7 +370,7 @@ namespace Salvavida.Tests
         public void IsDirty_AfterAdd_ReturnsTrue()
         {
             var serializer = new InMemorySerializer();
-            var list = CreateRootedList(serializer, null);
+            var list = CreateRootedList(serializer, []);
 
             Assert.True(list.IsDirty); // newly created list is always dirty.
 
@@ -430,7 +445,7 @@ namespace Salvavida.Tests
         public void Insert_ManyTimes_TriggersRebalance()
         {
             var serializer = new InMemorySerializer();
-            var list = CreateRootedList(serializer, null);
+            var list = CreateRootedList(serializer, []);
 
             // Insert many times at the same position to trigger rebalance
             for (int i = 0; i < 15; i++)
@@ -451,7 +466,7 @@ namespace Salvavida.Tests
         public void Serialize_AfterRebalance_DataIntegrity()
         {
             var serializer = new InMemorySerializer();
-            var list = CreateRootedList(serializer, null);
+            var list = CreateRootedList(serializer, []);
             const int count = 300;
             // Insert many times to trigger rebalance
             for (int i = 0; i < count; i++)
@@ -485,7 +500,7 @@ namespace Salvavida.Tests
         public void Insert_AtEnd_DoesNotTriggerRebalance()
         {
             var serializer = new InMemorySerializer();
-            var list = CreateRootedList(serializer, null);
+            var list = CreateRootedList(serializer, []);
 
             // Add items at the end (should not trigger rebalance)
             for (int i = 0; i < 20; i++)
@@ -581,7 +596,7 @@ namespace Salvavida.Tests
         public void Insert_NegativeIndex_Throws()
         {
             var serializer = new InMemorySerializer();
-            var list = CreateRootedList(serializer, null);
+            var list = CreateRootedList(serializer, []);
 
             Assert.Throws<ArgumentOutOfRangeException>(() =>
             {
@@ -651,8 +666,8 @@ namespace Salvavida.Tests
         {
             var serializer = new InMemorySerializer();
 
-            var list1 = CreateRootedList(serializer, null, "list1");
-            var list2 = CreateRootedList(serializer, null, "list2");
+            var list1 = CreateRootedList(serializer, [], "list1");
+            var list2 = CreateRootedList(serializer, [], "list2");
 
             // Add different items to each list
             list1.Add(CreateTestItem(1, "Item1"));
@@ -727,6 +742,122 @@ namespace Salvavida.Tests
                 Assert.Equal(3, list.Count);
             else
                 Assert.IsType<InvalidOperationException>(ex);
+        }
+
+        #endregion
+
+        #region Null Slot Shift Tests
+
+        // Verifies the invariant that _nullSlots keys are always in ascending iteration order.
+        // If InsertionSort were removed incorrectly (i.e. the invariant didn't hold), the
+        // shift helpers would assign IDs to wrong positions and round-trip would fail.
+
+        [Fact]
+        public void NullSlots_InsertShiftsMaintainAscendingOrder_RoundTrip()
+        {
+            // Build [item0, null, item2, null, item4]
+            var serializer = new InMemorySerializer();
+            var list = CreateRootedList(serializer, [
+                CreateTestItem(0, "A"),
+                null,
+                CreateTestItem(2, "C"),
+                null,
+                CreateTestItem(4, "E")
+            ]);
+
+            // Insert non-null at position 2 → nulls shift to positions 2 and 5
+            // [item0, null, item_new, item2, null, item4]  wait - insert before index 2:
+            // result: [item0, null, itemNew, item2, null, item4]
+            list.Insert(2, CreateTestItem(99, "NEW"));
+
+            // Insert another null at position 0 → everything shifts:
+            // [null, item0, null, itemNew, item2, null, item4]
+            list.Insert(0, null);
+
+            using (serializer.BeginFreshAction(list, out var ctx))
+                list.Serialize(serializer, ctx);
+
+            var list2 = CreateRootedList(serializer, null);
+            using (serializer.BeginFreshAction(list2, out var ctx))
+                list2.Deserialize(serializer, ctx);
+
+            Assert.Equal(7, list2.Count);
+            Assert.Null(list2[0]);
+            Assert.Equal(0, list2[1]?.SavableId);
+            Assert.Null(list2[2]);
+            Assert.Equal(99, list2[3]?.SavableId);
+            Assert.Equal(2, list2[4]?.SavableId);
+            Assert.Null(list2[5]);
+            Assert.Equal(4, list2[6]?.SavableId);
+        }
+
+        [Fact]
+        public void NullSlots_RemoveShiftsMaintainAscendingOrder_RoundTrip()
+        {
+            // Build [null, item1, null, item3, null]
+            var serializer = new InMemorySerializer();
+            var list = CreateRootedList(serializer, [
+                null,
+                CreateTestItem(1, "B"),
+                null,
+                CreateTestItem(3, "D"),
+                null
+            ]);
+
+            // Remove item at position 1 → nulls at 2, 4 shift to 1, 3
+            // [null, null, item3, null]
+            list.RemoveAt(1);
+
+            // Remove item at position 2 → null at 3 shifts to 2
+            // [null, null, null]
+            list.RemoveAt(2);
+
+            using (serializer.BeginFreshAction(list, out var ctx))
+                list.Serialize(serializer, ctx);
+
+            var list2 = CreateRootedList(serializer, null);
+            using (serializer.BeginFreshAction(list2, out var ctx))
+                list2.Deserialize(serializer, ctx);
+
+            Assert.Equal(3, list2.Count);
+            Assert.Null(list2[0]);
+            Assert.Null(list2[1]);
+            Assert.Null(list2[2]);
+        }
+
+        [Fact]
+        public void NullSlots_InterleavedInsertRemove_RoundTrip()
+        {
+            var serializer = new InMemorySerializer();
+            // Start: [item0, null, item2, null, item4, null]
+            var list = CreateRootedList(serializer, [
+                CreateTestItem(0, "A"),
+                null,
+                CreateTestItem(2, "C"),
+                null,
+                CreateTestItem(4, "E"),
+                null
+            ]);
+
+            list.Insert(3, CreateTestItem(10, "X")); // [item0, null, item2, itemX, null, item4, null]
+            list.RemoveAt(0);                         // [null, item2, itemX, null, item4, null]
+            list.Insert(1, null);                     // [null, null, item2, itemX, null, item4, null]
+            list.RemoveAt(4);                         // [null, null, item2, itemX, item4, null]
+
+            using (serializer.BeginFreshAction(list, out var ctx))
+                list.Serialize(serializer, ctx);
+
+            var list2 = CreateRootedList(serializer, null);
+            using (serializer.BeginFreshAction(list2, out var ctx))
+                list2.Deserialize(serializer, ctx);
+
+            Assert.Equal(6, list2.Count);
+            Assert.Null(list2[0]);
+            Assert.Null(list2[1]);
+            Assert.Equal(2, list2[2]?.SavableId);
+            Assert.Equal(10, list2[3]?.SavableId);
+            Assert.Equal(4, list2[4]?.SavableId);
+            Assert.Null(list2[5]);
         }
 
         #endregion

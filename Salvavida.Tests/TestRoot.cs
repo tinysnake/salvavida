@@ -2,7 +2,7 @@ namespace Salvavida.Tests
 {
     public partial class TestRoot<T> : ISavable, ISerializeRoot where T : ISavable
     {
-        private Serializer _serializer;
+        private Serializer? _serializer;
         public Serializer? Serializer => _serializer;
 
         private T? _data;

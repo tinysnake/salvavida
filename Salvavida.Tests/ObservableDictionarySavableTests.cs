@@ -17,12 +17,12 @@ namespace Salvavida.Tests
             };
         }
 
-        private ObservableDictionarySavable<int, SavableCustomData> CreateRootedDictionary(Serializer serializer, string name = null)
+        private ObservableDictionarySavable<int, SavableCustomData> CreateRootedDictionary(Serializer serializer, Dictionary<int, SavableCustomData?>? src, string? name = null)
         {
             var root = new TestRoot<ObservableDictionarySavable<int, SavableCustomData>>();
             root.SetSerializer(serializer);
             name = string.IsNullOrEmpty(name) ? "testDictionary" : name;
-            var dict = new ObservableDictionarySavable<int, SavableCustomData>(name, null, true);
+            var dict = new ObservableDictionarySavable<int, SavableCustomData>(name, src, true);
             root.Data = dict;
             return dict;
         }
@@ -35,7 +35,7 @@ namespace Salvavida.Tests
         public void Serialize_Deserialize_DataIntegrity()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             // Add items
             dict.Add(1, CreateTestItem(1, "Item1"));
@@ -49,7 +49,7 @@ namespace Salvavida.Tests
             }
 
             // Deserialize into new dictionary
-            var newDict = CreateRootedDictionary(serializer);
+            var newDict = CreateRootedDictionary(serializer, []);
             using (serializer.BeginFreshAction(newDict, out var ctx2))
             {
                 newDict.Deserialize(serializer, ctx2);
@@ -69,7 +69,7 @@ namespace Salvavida.Tests
         public void Serialize_EmptyDictionary_SavesNothing()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             // Serialize empty dictionary
             using (serializer.BeginFreshAction(dict, out var ctx))
@@ -78,7 +78,7 @@ namespace Salvavida.Tests
             }
 
             // Deserialize
-            var newDict = CreateRootedDictionary(serializer);
+            var newDict = CreateRootedDictionary(serializer, []);
             using (serializer.BeginFreshAction(newDict, out var ctx2))
             {
                 newDict.Deserialize(serializer, ctx2);
@@ -91,7 +91,7 @@ namespace Salvavida.Tests
         public void Serialize_WithDirtyItems_SavesOnlyDirty()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             // Add items and do a full initial save
             dict.Add(1, CreateTestItem(1, "Item1"));
@@ -102,7 +102,7 @@ namespace Salvavida.Tests
                 dict.Serialize(serializer, ctx);
 
             // Deserialize to get clean state, then clear all dirty flags recursively
-            var workDict = CreateRootedDictionary(serializer);
+            var workDict = CreateRootedDictionary(serializer, []);
             using (serializer.BeginFreshAction(workDict, out var ctx))
                 workDict.Deserialize(serializer, ctx);
 
@@ -118,7 +118,7 @@ namespace Salvavida.Tests
                 workDict.Serialize(serializer, ctx);
 
             // Deserialize into a fresh dict and verify all three values are correct
-            var resultDict = CreateRootedDictionary(serializer);
+            var resultDict = CreateRootedDictionary(serializer, []);
             using (serializer.BeginFreshAction(resultDict, out var ctx))
                 resultDict.Deserialize(serializer, ctx);
 
@@ -132,7 +132,7 @@ namespace Salvavida.Tests
         public void Serialize_WithRemovedItems_RemovesFromSerializer()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             // Add items
             dict.Add(1, CreateTestItem(1, "Item1"));
@@ -155,7 +155,7 @@ namespace Salvavida.Tests
             }
 
             // Deserialize and verify
-            var newDict = CreateRootedDictionary(serializer);
+            var newDict = CreateRootedDictionary(serializer, []);
             using (serializer.BeginFreshAction(newDict, out var ctx3))
             {
                 newDict.Deserialize(serializer, ctx3);
@@ -175,7 +175,7 @@ namespace Salvavida.Tests
         public void Add_Item_AddsToDictionary()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -189,7 +189,7 @@ namespace Salvavida.Tests
         public void Add_ExistingKey_Throws()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
 
@@ -203,7 +203,7 @@ namespace Salvavida.Tests
         public void Indexer_Set_AddsOrUpdatesItem()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict[1] = CreateTestItem(1, "Item1");
             dict[2] = CreateTestItem(2, "Item2");
@@ -222,7 +222,7 @@ namespace Salvavida.Tests
         public void Remove_ExistingKey_RemovesItem()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -241,7 +241,7 @@ namespace Salvavida.Tests
         public void Remove_NonExistingKey_ReturnsFalse()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
 
@@ -255,7 +255,7 @@ namespace Salvavida.Tests
         public void Clear_RemovesAllItems()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -270,7 +270,7 @@ namespace Salvavida.Tests
         public void ContainsKey_ExistingKey_ReturnsTrue()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -284,7 +284,7 @@ namespace Salvavida.Tests
         public void TryGetValue_ExistingKey_ReturnsValue()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -309,7 +309,7 @@ namespace Salvavida.Tests
         public void Keys_ReturnsAllKeys()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -327,7 +327,7 @@ namespace Salvavida.Tests
         public void Values_ReturnsAllValues()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -342,7 +342,7 @@ namespace Salvavida.Tests
         public void SwapSource_WithDictionary_ReplacesContents()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
 
@@ -368,21 +368,22 @@ namespace Salvavida.Tests
         public void SwapSource_WithNull_ClearsDictionary()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
 
             dict.SwapSource(null);
 
-            Assert.Equal(0, dict.Count);
+            Assert.Throws<NullReferenceException>(() =>
+                        Assert.Equal(0, dict.Count));
         }
 
         [Fact]
         public void GetEnumerator_EnumeratesAllItems()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -406,7 +407,7 @@ namespace Salvavida.Tests
         public void IsDirty_AfterAdd_ReturnsTrue()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             Assert.True(dict.IsDirty); // newly created dictionary is always dirty
 
@@ -423,7 +424,7 @@ namespace Salvavida.Tests
         public void IsDirty_AfterRemove_ReturnsTrue()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.SetDirty(false, false);
@@ -437,7 +438,7 @@ namespace Salvavida.Tests
         public void IsDirty_AfterModifyItem_ReturnsTrue()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             using (serializer.BeginFreshAction(dict, out var ctx))
@@ -456,7 +457,7 @@ namespace Salvavida.Tests
         public void SetDirty_Recursive_SetsAllItemsDirty()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -473,7 +474,7 @@ namespace Salvavida.Tests
         public void SetDirty_NotRecursive_SetsSelfDirty()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, CreateTestItem(2, "Item2"));
@@ -487,7 +488,7 @@ namespace Salvavida.Tests
         public void IsDirty_WithDirtyChild_ReturnsTrue()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             using (serializer.BeginFreshAction(dict, out var ctx))
@@ -512,7 +513,7 @@ namespace Salvavida.Tests
         public void Indexer_SetNullValue_SetsNull()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict[1] = CreateTestItem(1, "Item1");
             Assert.Equal(1, dict.Count);
@@ -527,7 +528,7 @@ namespace Salvavida.Tests
         public void Add_NullValue_AddsToDictionary()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, null);
 
@@ -539,7 +540,7 @@ namespace Salvavida.Tests
         public void Serialize_WithNullValues_SavesCorrectly()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
             dict.Add(2, null);
@@ -552,7 +553,7 @@ namespace Salvavida.Tests
             }
 
             // Deserialize
-            var newDict = CreateRootedDictionary(serializer);
+            var newDict = CreateRootedDictionary(serializer, []);
             using (serializer.BeginFreshAction(newDict, out var ctx2))
             {
                 newDict.Deserialize(serializer, ctx2);
@@ -572,7 +573,7 @@ namespace Salvavida.Tests
         public void Indexer_Get_NonExistingKey_Throws()
         {
             var serializer = new InMemorySerializer();
-            var dict = CreateRootedDictionary(serializer);
+            var dict = CreateRootedDictionary(serializer, []);
 
             dict.Add(1, CreateTestItem(1, "Item1"));
 
@@ -586,7 +587,7 @@ namespace Salvavida.Tests
         public void Constructor_NullSourceDictionary_Works()
         {
             var serializer = new InMemorySerializer();
-            var dict = new ObservableDictionarySavable<int, SavableCustomData>("test", null, true);
+            var dict = new ObservableDictionarySavable<int, SavableCustomData>("test", [], true);
 
             Assert.Equal(0, dict.Count);
         }
@@ -600,8 +601,8 @@ namespace Salvavida.Tests
         {
             var serializer = new InMemorySerializer();
 
-            var dict1 = CreateRootedDictionary(serializer, "dict1");
-            var dict2 = CreateRootedDictionary(serializer, "dict2");
+            var dict1 = CreateRootedDictionary(serializer, [], "dict1");
+            var dict2 = CreateRootedDictionary(serializer, [], "dict2");
 
             // Add different items to each dictionary
             dict1.Add(1, CreateTestItem(1, "Item1"));
@@ -622,13 +623,13 @@ namespace Salvavida.Tests
             }
 
             // Deserialize both
-            var newDict1 = CreateRootedDictionary(serializer, "dict1");
+            var newDict1 = CreateRootedDictionary(serializer, null, "dict1");
             using (serializer.BeginFreshAction(newDict1, out var ctx3))
             {
                 newDict1.Deserialize(serializer, ctx3);
             }
 
-            var newDict2 = CreateRootedDictionary(serializer, "dict2");
+            var newDict2 = CreateRootedDictionary(serializer, null, "dict2");
             using (serializer.BeginFreshAction(newDict2, out var ctx4))
             {
                 newDict2.Deserialize(serializer, ctx4);
@@ -650,7 +651,7 @@ namespace Salvavida.Tests
             var serializer = new InMemorySerializer();
             var root = new TestRoot<ObservableDictionarySavable<string, SavableCustomData>>();
             root.SetSerializer(serializer);
-            var dict = new ObservableDictionarySavable<string, SavableCustomData>("test", null, true);
+            var dict = new ObservableDictionarySavable<string, SavableCustomData>("test", [], true);
             root.Data = dict;
 
             dict.Add("key1", CreateTestItem(1, "Item1"));

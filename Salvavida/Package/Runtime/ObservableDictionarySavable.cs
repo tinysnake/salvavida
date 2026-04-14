@@ -16,7 +16,7 @@ namespace Salvavida
             SwapSource(src, false, false);
         }
 
-        private Dictionary<TKey, TValue?> _dict = new();
+        private Dictionary<TKey, TValue?>? _dict = new();
         private readonly HashSet<TKey> _idsDeleted;
 
         public override bool IsDirty
@@ -25,6 +25,8 @@ namespace Salvavida
             {
                 if (IsSelfDirty)
                     return true;
+                if (_dict == null)
+                    return false;
                 foreach (var (_, val) in _dict)
                 {
                     if (val == null)
@@ -38,9 +40,11 @@ namespace Salvavida
 
         public override TValue? this[TKey key]
         {
-            get => _dict[key];
+            get => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict[key];
             set
             {
+                if (_dict == null)
+                    throw new NullReferenceException(nameof(_dict));
                 var add = !_dict.TryGetValue(key, out var oldValue);
                 if (EqualityComparer<TValue?>.Default.Equals(oldValue, value))
                     return;
@@ -57,9 +61,9 @@ namespace Salvavida
             }
         }
 
-        public override ICollection<TKey> Keys => _dict.Keys;
-        public override ICollection<TValue?> Values => _dict.Values;
-        public override int Count => _dict.Count;
+        public override ICollection<TKey> Keys => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.Keys;
+        public override ICollection<TValue?> Values => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.Values;
+        public override int Count => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.Count;
 
         public Dictionary<TKey, TValue?>? RetrieveSource() => _dict;
         public object? RetrieveSourceRaw() => _dict;
@@ -68,13 +72,12 @@ namespace Salvavida
         public override void SetDirty(bool dirty, bool recursive)
         {
             base.SetDirty(dirty, recursive);
-            if (recursive)
+            if (_dict == null || !recursive)
+                return;
+            _isChildrenDirty = dirty;
+            foreach (var (_, val) in _dict)
             {
-                _isChildrenDirty = dirty;
-                foreach (var (_, val) in _dict)
-                {
-                    val?.SetDirty(dirty, recursive);
-                }
+                val?.SetDirty(dirty, recursive);
             }
         }
 
@@ -82,25 +85,32 @@ namespace Salvavida
         {
             if (!SaveSeparately)
                 return;
-
-            foreach (var (key, value) in _dict)
+            if (_dict != null)
             {
-                if (value != null && !value.IsDirty)
-                    continue;
-                var id = _idConverter.ConvertTo(key);
-                using (ctx.Path.UsePush(id, PathBuilder.Type.Collection))
+                foreach (var (key, value) in _dict)
                 {
-                    if (value == null)
-                        serializer.SaveNoPushPath<TValue>(default, ctx);
-                    else
-                        value.Serialize(serializer, ctx);
+                    if (value != null && !value.IsDirty)
+                        continue;
+                    var id = _idConverter.ConvertTo(key);
+                    using (ctx.Path.UsePush(id, PathBuilder.Type.Collection))
+                    {
+                        if (value == null)
+                            serializer.SaveNoPushPath<TValue>(default, ctx);
+                        else
+                            value.Serialize(serializer, ctx);
+                    }
                 }
+                foreach (var id in _idsDeleted)
+                {
+                    serializer.Delete(ctx, _idConverter.ConvertTo(id), PathBuilder.Type.Collection);
+                }
+                _idsDeleted.Clear();
+                SaveMetadata(serializer, ctx, _dict.Count);
             }
-            foreach (var id in _idsDeleted)
+            else
             {
-                serializer.Delete(ctx, _idConverter.ConvertTo(id), PathBuilder.Type.Collection);
+                serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
             }
-            _idsDeleted.Clear();
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
@@ -109,13 +119,27 @@ namespace Salvavida
                 return;
 
             SwapSource(null, false, false);
+
+            _dict = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property))
+            {
+                if (serializer.HasNoPushPath(ctx))
+                {
+                    CollectionMetadata metadata = serializer.Read<CollectionMetadata>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                    _dict = new Dictionary<TKey, TValue?>(metadata.Count);
+                }
+            }
+
+            _idsDeleted.Clear();
+            if (_dict == null)
+                return;
+
             var ids = serializer.ListCollectionIds(ctx);
             var dict = new Dictionary<TKey, TValue?>();
             foreach (var id in ids)
             {
                 dict[_idConverter.ConvertFrom(id)] = serializer.Read<TValue?>(ctx, id, PathBuilder.Type.Collection);
             }
-            _idsDeleted.Clear();
             SwapSource(dict, false, true);
         }
 
@@ -125,10 +149,12 @@ namespace Salvavida
             SwapSource(dict, true, false);
         }
 
-        public override bool ContainsKey(TKey key) => _dict.ContainsKey(key);
+        public override bool ContainsKey(TKey key) => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.ContainsKey(key);
 
         public override void Add(TKey key, TValue? value)
         {
+            if (_dict == null)
+                throw new NullReferenceException(nameof(_dict));
             _dict.Add(key, value);
             OnItemSet(value, key);
             _idsDeleted.Remove(key);
@@ -137,6 +163,8 @@ namespace Salvavida
 
         public override bool Remove(TKey key)
         {
+            if (_dict == null)
+                throw new NullReferenceException(nameof(_dict));
             if (_dict.TryGetValue(key, out var item))
             {
                 _dict.Remove(key);
@@ -148,10 +176,12 @@ namespace Salvavida
             return false;
         }
 
-        public override bool TryGetValue(TKey key, out TValue? value) => _dict.TryGetValue(key, out value);
+        public override bool TryGetValue(TKey key, out TValue? value) => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.TryGetValue(key, out value);
 
         public override void Clear()
         {
+            if (_dict == null)
+                throw new NullReferenceException(nameof(_dict));
             OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavableBase<TKey, TValue>, TValue?>.Reset((ObservableDictionarySavableBase<TKey, TValue>)(object)this));
             foreach (var (key, value) in _dict)
             {
@@ -161,39 +191,45 @@ namespace Salvavida
             _dict.Clear();
         }
 
-        public Dictionary<TKey, TValue?>.Enumerator GetEnumerator() => _dict.GetEnumerator();
+        public Dictionary<TKey, TValue?>.Enumerator GetEnumerator() => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.GetEnumerator();
 
-        protected override IEnumerator<KeyValuePair<TKey, TValue?>> GetEnumeratorCore() => _dict.GetEnumerator();
+        protected override IEnumerator<KeyValuePair<TKey, TValue?>> GetEnumeratorCore() => _dict == null ? throw new NullReferenceException(nameof(_dict)) : _dict.GetEnumerator();
 
         private void SwapSource(Dictionary<TKey, TValue?>? dict, bool notifyChanges, bool resetDirtiness)
         {
-            foreach (var (_, item) in _dict)
+            if (_dict != null)
             {
-                TryUnWatch(item);
+                foreach (var (_, item) in _dict)
+                {
+                    TryUnWatch(item);
+                }
             }
 
             if (notifyChanges)
                 OnCollectionChange(CollectionChangeInfo<ObservableDictionarySavableBase<TKey, TValue>, TValue?>.Reset((ObservableDictionarySavableBase<TKey, TValue>)(object)this));
 
-            _dict = dict ?? new Dictionary<TKey, TValue?>();
+            _dict = dict;
 
-            foreach (var (key, item) in _dict)
+            if (_dict != null)
             {
-                if (item != null && string.IsNullOrEmpty(item.SvId))
-                    item.SvId = _idConverter.ConvertTo(key);
-  
-                TryWatch(item);
-                if(resetDirtiness)
-                    OnChildDeserialized(item);
-            }
+                foreach (var (key, item) in _dict)
+                {
+                    if (item != null && string.IsNullOrEmpty(item.SvId))
+                        item.SvId = _idConverter.ConvertTo(key);
 
-            if (notifyChanges)
-                OnCollectionChange(CreateSaveAllEvent());
+                    TryWatch(item);
+                    if (resetDirtiness)
+                        OnChildDeserialized(item);
+                }
+
+                if (notifyChanges)
+                    OnCollectionChange(CreateSaveAllEvent());
+            }
         }
 
         private CollectionChangeInfo<ObservableDictionarySavableBase<TKey, TValue>, TValue?> CreateSaveAllEvent()
         {
-            var arr = new TValue?[_dict.Count];
+            var arr = new TValue?[_dict!.Count];
             var i = 0;
             foreach (var (_, val) in _dict)
             {

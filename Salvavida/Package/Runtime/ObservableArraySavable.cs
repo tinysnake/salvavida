@@ -10,13 +10,11 @@ namespace Salvavida
         public ObservableArraySavable(string propName, T?[]? src, bool saveSeparately)
             : base(propName, saveSeparately)
         {
-            _idxDeleted = new();
-            _arr = Array.Empty<T>();
             SwapSource(src, false);
         }
 
-        private T?[] _arr;
-        private readonly HashSet<int> _idxDeleted;
+        private T?[]? _arr;
+        private readonly HashSet<int> _idxDeleted = new();
 
         public override bool IsDirty
         {
@@ -24,6 +22,8 @@ namespace Salvavida
             {
                 if (IsSelfDirty)
                     return true;
+                if (_arr == null)
+                    return false;
                 foreach (var item in _arr)
                 {
                     if (item == null)
@@ -40,16 +40,18 @@ namespace Salvavida
         {
             get
             {
+                if (_arr == null) throw new NullReferenceException(nameof(_arr));
                 ValidateIndex(index);
                 return _arr[index];
             }
             set
             {
+                if (_arr == null) throw new NullReferenceException(nameof(_arr));
                 ValidateIndex(index);
                 var oldVal = _arr[index];
                 if (EqualityComparer<T?>.Default.Equals(oldVal, value))
                     return;
-                if(oldVal!=null)
+                if (oldVal != null)
                     _idxDeleted.Add(index);
                 _arr[index] = value;
                 if (value != null)
@@ -71,19 +73,18 @@ namespace Salvavida
         public override void SetDirty(bool dirty, bool recursive)
         {
             base.SetDirty(dirty, recursive);
-            if (recursive && _arr != null)
+            if (!recursive || _arr == null)
+                return;
+            _isChildrenDirty = dirty;
+            foreach (var item in _arr)
             {
-                _isChildrenDirty = dirty;
-                foreach (var item in _arr)
-                {
-                    item?.SetDirty(dirty, recursive);
-                }
+                item?.SetDirty(dirty, recursive);
             }
         }
 
         private void ValidateIndex(int index)
         {
-            if(index < 0 || index >= _arr.Length)
+            if (index < 0 || index >= _arr!.Length)
                 throw new ArgumentOutOfRangeException(nameof(index));
         }
 
@@ -92,30 +93,37 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            for (var i = 0; i < _arr.Length; i++)
+            if (_arr != null)
             {
-                var elem = _arr[i];
-                if (elem == null)
-                    continue;
-                else if (elem.IsDirty)
+                for (var i = 0; i < _arr.Length; i++)
                 {
-                    using var _ = ctx.Path.UsePush(elem.SvId, PathBuilder.Type.Collection);
-                    elem.Serialize(serializer, ctx);
+                    var elem = _arr[i];
+                    if (elem == null)
+                        continue;
+                    else if (elem.IsDirty)
+                    {
+                        using var _ = ctx.Path.UsePush(elem.SvId, PathBuilder.Type.Collection);
+                        elem.Serialize(serializer, ctx);
+                    }
                 }
-            }
 
-            foreach(var idx in _idxDeleted)
-            {
-                var id = GetPaddedIndex(idx, _arr.Length);
-                serializer.Delete(ctx, id, PathBuilder.Type.Collection);
-            }
-            _idxDeleted.Clear();
+                foreach (var idx in _idxDeleted)
+                {
+                    var id = GetPaddedIndex(idx, _arr.Length);
+                    serializer.Delete(ctx, id, PathBuilder.Type.Collection);
+                }
+                _idxDeleted.Clear();
 
-            var meta = new CollectionMetadata
+                var meta = new CollectionMetadata
+                {
+                    Count = _arr.Length,
+                };
+                serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+            }
+            else
             {
-                Count = _arr.Length,
-            };
-            serializer.Save(meta, ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                serializer.Delete(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+            }
         }
 
         public override void Deserialize(Serializer serializer, SerializeContext ctx)
@@ -123,14 +131,24 @@ namespace Salvavida
             if (!SaveSeparately)
                 return;
 
-            CollectionMetadata metadata = serializer.Read<CollectionMetadata>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
 
             SwapSource(null, false);
-            var arr = new T?[metadata.Count];
+            T?[]? arr = null;
+            using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property))
+            {
+                if (serializer.HasNoPushPath(ctx))
+                {
+                    CollectionMetadata metadata = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
+                    arr = new T?[metadata.Count];
+                }
+            }
+
+            if (arr == null)
+                return;
 
             foreach (var id in serializer.ListCollectionIds(ctx))
             {
-                if(!int.TryParse(id, out var index))
+                if (!int.TryParse(id, out var index))
                     throw new FormatException("invalid format for a int typed index value");
                 var item = serializer.Read<T?>(ctx, id, PathBuilder.Type.Collection);
                 arr[index] = item;
@@ -154,7 +172,6 @@ namespace Salvavida
 
         private void SwapSource(T?[]? array, bool notifyChanges)
         {
-            array ??= Array.Empty<T>();
             if (_arr != null)
             {
                 if (notifyChanges)
@@ -185,16 +202,29 @@ namespace Salvavida
             return CollectionChangeInfo<ObservableArraySavableBase<T>, T?>.Add(this, _arr, 0);
         }
 
-        public override bool Contains(T? item) => Array.IndexOf(_arr, item) >= 0;
+        public override bool Contains(T? item)
+        {
+            if (_arr == null) throw new NullReferenceException(nameof(_arr));
+            return Array.IndexOf(_arr, item) >= 0;
+        }
 
-        public override IEnumerator<T?> GetEnumerator() => new ArrayEnumerator(_arr);
+        public override IEnumerator<T?> GetEnumerator()
+        {
+            if (_arr == null) throw new NullReferenceException(nameof(_arr));
+            return new ArrayEnumerator(_arr);
+        }
 
-        public override int IndexOf(T? item) => Array.IndexOf(_arr, item);
+        public override int IndexOf(T? item)
+        {
+            if (_arr == null) throw new NullReferenceException(nameof(_arr));
+            return Array.IndexOf(_arr, item);
+        }
 
         public struct ArrayEnumerator : IEnumerator<T?>
         {
             public ArrayEnumerator(T?[] _arr)
             {
+                if (_arr == null) throw new NullReferenceException(nameof(_arr));
                 this._arr = _arr;
                 _i = 0;
                 _cur = default;

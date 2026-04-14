@@ -380,7 +380,8 @@ namespace Salvavida.Generator
                 sb.WriteLine($"get");
                 using (sb.CurlyBracketsScope())
                 {
-                    sb.WriteLine($"if ({fieldName} == null) return null;");
+                    if (!isSavable || lazyConfig.Mode == LazyLoadMode.None)
+                        sb.WriteLine($"if ({fieldName} == null) return null;");
                     sb.WriteLine($"TryInit{propertyName}();");
                     sb.WriteLine($"return {fieldName}Ob;");
                 }
@@ -732,6 +733,7 @@ namespace Salvavida.Generator
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("this.ChildDeserialized(target);");
+                sb.WriteLine("(target as ISavable).SetParent(this);");
                 sb.WriteLine("target.PropertyChanged += OnChildChanged;");
                 sb.WriteLine("target.CollectionChanged += OnCollectionChanged;");
             }
@@ -742,6 +744,7 @@ namespace Salvavida.Generator
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("if (target == null) return;");
+                sb.WriteLine("this.SetChild(target);");
                 sb.WriteLine("target.PropertyChanged += OnChildChanged;");
                 sb.WriteLine("target.CollectionChanged += OnCollectionChanged;");
             }
@@ -752,6 +755,7 @@ namespace Salvavida.Generator
             using (sb.CurlyBracketsScope())
             {
                 sb.WriteLine("if (target == null) return;");
+                sb.WriteLine("(target as ISavable).SetParent(null);");
                 sb.WriteLine("target.PropertyChanged -= OnChildChanged;");
                 sb.WriteLine("target.CollectionChanged -= OnCollectionChanged;");
             }

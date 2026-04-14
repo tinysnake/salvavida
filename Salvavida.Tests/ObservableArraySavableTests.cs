@@ -91,6 +91,25 @@ namespace Salvavida.Tests
         }
 
         [Fact]
+        public void Serialize_EmptyArray_AlsoSavesMetadata()
+        {
+            var serializer = new InMemorySerializer();
+            var array = CreateRootedArray(serializer, []);
+
+            // Serialize empty array
+            using (serializer.BeginFreshAction(array, out var ctx))
+            {
+                array.Serialize(serializer, ctx);
+                using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property))
+                {
+                    Assert.True(serializer.ContainsPath(ctx.Path.ToString()));
+                    var meta = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
+                    Assert.Equal(0, meta.Count);
+                }
+            }
+        }
+
+        [Fact]
         public void Serialize_NullArray_AlsoSavesMetadata()
         {
             var serializer = new InMemorySerializer();
@@ -102,9 +121,7 @@ namespace Salvavida.Tests
                 array.Serialize(serializer, ctx);
                 using (ctx.Path.UsePush(SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property))
                 {
-                    Assert.True(serializer.ContainsPath(ctx.Path.ToString()));
-                    var meta = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
-                    Assert.Equal(0, meta.Count);
+                    Assert.False(serializer.HasNoPushPath(ctx));
                 }
             }
         }

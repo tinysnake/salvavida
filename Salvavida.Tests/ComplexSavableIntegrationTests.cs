@@ -1,13 +1,23 @@
-using System;
-using System.Collections.Generic;
 using Xunit;
-using Salvavida;
-using System.Text.Json;
 
 namespace Salvavida.Tests
 {
     public class ComplexSavableIntegrationTests
     {
+
+        private ComplexSavableTestClass CreateRootedObj(Serializer serializer, string? name = null)
+        {
+            var root = new TestRoot<ComplexSavableTestClass>();
+            root.SetSerializer(serializer);
+            name = string.IsNullOrEmpty(name) ? "testObj" : name;
+            var testObj = new ComplexSavableTestClass
+            {
+                SvId = name
+            };
+            root.Data = testObj;
+            return testObj;
+        }
+
         [Fact]
         public void SerializeAndVerify_BasicFields()
         {
@@ -85,7 +95,7 @@ namespace Salvavida.Tests
             Assert.Equivalent(testObj.CustomDataList, result.CustomDataList, true);
             Assert.Equivalent(testObj.CustomDataDict, result.CustomDataDict, true);
 
-            Assert.Equal(testObj.savableCustomDataList.Count, result.SavableCustomDataList.Count);
+            Assert.Equal(testObj.SavableCustomDataList.Count, result.SavableCustomDataList.Count);
             Assert.Equal(testObj.SavableCustomDataList[0]!.SavableId, result.SavableCustomDataList[0]!.SavableId);
             Assert.Equal(testObj.SavableCustomDataList[0]!.SavableName, result.SavableCustomDataList[0]!.SavableName);
             Assert.Equal(testObj.SavableCustomDataList[1]!.SavableId, result.SavableCustomDataList[1]!.SavableId);
@@ -250,6 +260,60 @@ namespace Salvavida.Tests
             Assert.Equal(testObj.SeparatelySavedSavableCustomDataList[2]!.SavableName, result.SeparatelySavedSavableCustomDataList[2]!.SavableName);
 
             Assert.NotNull(result.SeparatelySavedSavableCustomDataDict);
+        }
+
+        [Fact]
+        public void SerializeAndVerify_SavableCustomDataListLazy()
+        {
+            var serializer = new InMemorySerializer();
+            var testObj = CreateRootedObj(serializer);
+
+            testObj.SetSeparatelySavedSavableCustomDataArrayLazy([new SavableCustomData { SavableId = 1, SavableName = "data1" }, null, new SavableCustomData { SavableId = 2, SavableName = "data2" }]);
+            testObj.SetSeparatelySavedSavableCustomDataListLazy([new SavableCustomData { SavableId = 1, SavableName = "data1" }, null, new SavableCustomData { SavableId = 2, SavableName = "data2" }]);
+            testObj.SetSeparatelySavedSavableCustomDataDictLazy(new Dictionary<string, SavableCustomData?> { ["key1"] = new SavableCustomData { SavableId = 1, SavableName = "data1" }, ["key2"] = null, ["key3"] = new SavableCustomData { SavableId = 2, SavableName = "data2" } });
+
+            using(serializer.BeginFreshAction(testObj, out var ctx))
+            {
+                testObj.Serialize(serializer, ctx);
+            }
+
+            TestRoot<ComplexSavableTestClass>? newRoot = new();
+            newRoot.SetSerializer(serializer);
+            using(serializer.BeginFreshAction(newRoot, out var ctx))
+            {
+                ctx.Path.Push(testObj.SvId, PathBuilder.Type.Property);
+                newRoot.Data = serializer.ReadNoPushPath<ComplexSavableTestClass>(ctx);
+            }
+            Assert.NotNull(newRoot);
+
+            var result = newRoot.Data;
+            Assert.NotNull(result);
+            Assert.NotNull(result.SeparatelySavedSavableCustomDataArrayLazy);
+            Assert.Equal(3, result.SeparatelySavedSavableCustomDataArrayLazy.Count);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArrayLazy[0]!.SavableId, result.SeparatelySavedSavableCustomDataArrayLazy[0]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArrayLazy[0]!.SavableName, result.SeparatelySavedSavableCustomDataArrayLazy[0]!.SavableName);
+            Assert.Null(result.SeparatelySavedSavableCustomDataArrayLazy[1]);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArrayLazy[2]!.SavableId, result.SeparatelySavedSavableCustomDataArrayLazy[2]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataArrayLazy[2]!.SavableName, result.SeparatelySavedSavableCustomDataArrayLazy[2]!.SavableName);
+
+            Assert.NotNull(result.SeparatelySavedSavableCustomDataListLazy);
+            Assert.Equal(3, result.SeparatelySavedSavableCustomDataListLazy.Count);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataListLazy[0]!.SavableId, result.SeparatelySavedSavableCustomDataListLazy[0]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataListLazy[0]!.SavableName, result.SeparatelySavedSavableCustomDataListLazy[0]!.SavableName);
+            Assert.Null(result.SeparatelySavedSavableCustomDataListLazy[1]);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataListLazy[2]!.SavableId, result.SeparatelySavedSavableCustomDataListLazy[2]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataListLazy[2]!.SavableName, result.SeparatelySavedSavableCustomDataListLazy[2]!.SavableName);
+
+            Assert.NotNull(result.SeparatelySavedSavableCustomDataDictLazy);
+            Assert.Equal(3, result.SeparatelySavedSavableCustomDataDictLazy.Count);
+            Assert.True(result.SeparatelySavedSavableCustomDataDictLazy.ContainsKey("key1"));
+            Assert.True(result.SeparatelySavedSavableCustomDataDictLazy.ContainsKey("key2"));
+            Assert.True(result.SeparatelySavedSavableCustomDataDictLazy.ContainsKey("key3"));
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataDictLazy["key1"]!.SavableId, result.SeparatelySavedSavableCustomDataDictLazy["key1"]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataDictLazy["key1"]!.SavableName, result.SeparatelySavedSavableCustomDataDictLazy["key1"]!.SavableName);
+            Assert.Null(result.SeparatelySavedSavableCustomDataDictLazy["key2"]);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataDictLazy["key3"]!.SavableId, result.SeparatelySavedSavableCustomDataDictLazy["key3"]!.SavableId);
+            Assert.Equal(testObj.SeparatelySavedSavableCustomDataDictLazy["key3"]!.SavableName, result.SeparatelySavedSavableCustomDataDictLazy["key3"]!.SavableName);
         }
     }
 }
