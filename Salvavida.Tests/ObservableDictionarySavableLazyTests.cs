@@ -42,7 +42,7 @@ namespace Salvavida.Tests
             var root = new TestRoot<ObservableDictionarySavableLazy<int, SavableCustomData>>();
             root.SetSerializer(serializer);
             name = string.IsNullOrEmpty(name) ? "testDictionary" : name;
-            var dict = new ObservableDictionarySavableLazy<int, SavableCustomData>(name, true, opt.Value);
+            var dict = new ObservableDictionarySavableLazy<int, SavableCustomData>(name, opt.Value);
             root.Data = dict;
             return dict;
         }
@@ -854,7 +854,7 @@ namespace Salvavida.Tests
 
             Assert.Throws<InvalidOperationException>(() =>
             {
-                var _ = new ObservableDictionarySavableLazy<int, SavableCustomData>("testDict", true, options);
+                var _ = new ObservableDictionarySavableLazy<int, SavableCustomData>("testDict", options);
             });
         }
 
@@ -957,7 +957,7 @@ namespace Salvavida.Tests
             var options = CreateLoadAllOptions();
             var root = new TestRoot<ObservableDictionarySavableLazy<string, SavableCustomData>>();
             root.SetSerializer(serializer);
-            var dict = new ObservableDictionarySavableLazy<string, SavableCustomData>("test", true, options);
+            var dict = new ObservableDictionarySavableLazy<string, SavableCustomData>("test", options);
             root.Data = dict;
 
             dict.Add("key1", CreateTestItem(1, "Item1"));

@@ -41,7 +41,7 @@ namespace Salvavida.Tests
             var root = new TestRoot<ObservableArraySavableLazy<SavableCustomData>>();
             root.SetSerializer(serializer);
             name = string.IsNullOrEmpty(name) ? "testArray" : name;
-            var array = new ObservableArraySavableLazy<SavableCustomData>(name, true, opt.Value);
+            var array = new ObservableArraySavableLazy<SavableCustomData>(name, opt.Value);
             root.Data = array;
             return array;
         }
@@ -798,7 +798,7 @@ namespace Salvavida.Tests
         public void IsLoaded_EmptyArray_Throws()
         {
             var options = CreateLoadAllOptions();
-            var array = new ObservableArraySavableLazy<SavableCustomData>("testArray", true, options);
+            var array = new ObservableArraySavableLazy<SavableCustomData>("testArray", options);
 
             Assert.Equal(0, array.Count);
             Assert.Equal(0, array.LoadedCount);

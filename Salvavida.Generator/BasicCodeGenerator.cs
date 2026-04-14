@@ -390,7 +390,7 @@ namespace Salvavida.Generator
                 if (isSavable && lazyConfig.Mode != LazyLoadMode.None)
                 {
                     // Lazy-loaded collection: new Type(propName, saveSeparately, CollectionOptions)
-                    sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\", {(saveSeparately ? "true" : "false")}, new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode}, BatchLoadCount = {lazyConfig.BatchLoadCount} }});");
+                    sb.WriteLine($"{fieldName}Ob = new {concreteTypeString}(\"{propertyName}\", new CollectionOptions {{ Mode = LazyLoadMode.{lazyConfig.Mode}, BatchLoadCount = {lazyConfig.BatchLoadCount} }});");
                 }
                 else
                 {

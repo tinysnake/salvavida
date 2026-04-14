@@ -90,7 +90,7 @@ namespace Salvavida
         void ICollection.CopyTo(Array array, int index)
         {
             int i = index;
-            foreach (var kvp in (IEnumerable<KeyValuePair<TKey, TValue?>>)this)
+            foreach (var kvp in this)
                 array.SetValue(kvp, i++);
         }
 

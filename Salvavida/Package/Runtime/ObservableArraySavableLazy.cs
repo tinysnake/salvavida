@@ -20,8 +20,8 @@ namespace Salvavida
         private int _loadedCount;
         private Serializer? _serializer;
 
-        public ObservableArraySavableLazy(string propName, bool saveSeparately, CollectionOptions options)
-            : base(propName, saveSeparately)
+        public ObservableArraySavableLazy(string propName, CollectionOptions options)
+            : base(propName, true)
         {
             if (options.Mode == LazyLoadMode.None)
                 throw new InvalidOperationException("LazyLoadMode.None is not supported for lazy-loaded collections. Use ObservableArraySavable<T> instead.");

@@ -24,8 +24,8 @@ namespace Salvavida
         private uint _version;   // incremented only by mutating operations
         private Serializer? _serializer;
 
-        public ObservableDictionarySavableLazy(string propName, bool saveSeparately, CollectionOptions options)
-            : base(propName, saveSeparately)
+        public ObservableDictionarySavableLazy(string propName, CollectionOptions options)
+            : base(propName, true)
         {
             if (options.Mode == LazyLoadMode.None)
                 throw new InvalidOperationException("LazyLoadMode.None is not supported for lazy-loaded collections. Use ObservableDictionarySavable<TKey, TValue> instead.");

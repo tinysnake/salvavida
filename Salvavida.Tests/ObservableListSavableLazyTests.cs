@@ -42,7 +42,7 @@ namespace Salvavida.Tests
             var root = new TestRoot<ObservableListSavableLazy<SavableCustomData>>();
             root.SetSerializer(serializer);
             name = string.IsNullOrEmpty(name) ? "testList" : name;
-            var list = new ObservableListSavableLazy<SavableCustomData>(name, true, opt.Value);
+            var list = new ObservableListSavableLazy<SavableCustomData>(name, opt.Value);
             root.Data = list;
             return list;
         }
@@ -1029,7 +1029,7 @@ namespace Salvavida.Tests
 
             Assert.Throws<InvalidOperationException>(() =>
             {
-                var _ = new ObservableListSavableLazy<SavableCustomData>("testList", true, options);
+                var _ = new ObservableListSavableLazy<SavableCustomData>("testList", options);
             });
         }
 
@@ -1037,7 +1037,7 @@ namespace Salvavida.Tests
         public void IsLoaded_EmptyList_Throws()
         {
             var options = CreateLoadAllOptions();
-            var list = new ObservableListSavableLazy<SavableCustomData>("testList", true, options);
+            var list = new ObservableListSavableLazy<SavableCustomData>("testList", options);
 
             Assert.Equal(0, list.Count);
             Assert.Equal(0, list.LoadedCount);
