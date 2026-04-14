@@ -64,11 +64,19 @@ namespace Salvavida.Generator
             isEnabledByDefault: true);
 
         public static readonly DiagnosticDescriptor AllCandidateNamesAreUnavailable = new(
-            id: "SV007",
+            id: "SV008",
             title: "Salvavida自动生成的所有候选名称都已重复，请添加PropertyName特性以自定义名称",
             messageFormat: "Salvavida自动生成的所有候选名称都已重复，请添加PropertyName特性以自定义名称",
             category: CATEGORY,
             defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor LazyLoadAttributeNotApplicable = new(
+            id: "SV009",
+            title: "LazyLoadAttribute仅对元素类型为ISavable的集合成员有效",
+            messageFormat: "成员 '{0}' 不符合LazyLoadAttribute的使用条件：仅支持元素类型为ISavable的集合成员，该特性将被忽略",
+            category: CATEGORY,
+            defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true);
 
         public static readonly DiagnosticDescriptor UJ_PrivateKeywoardRecommended = new(

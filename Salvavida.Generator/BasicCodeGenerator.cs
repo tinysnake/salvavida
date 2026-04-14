@@ -244,6 +244,12 @@ namespace Salvavida.Generator
             _infoStore!.nameMappings[fieldName] = propertyName;
             if (collectionType == CollectionType.None)
             {
+                if (lazyLoadAttr != null)
+                {
+                    ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.LazyLoadAttributeNotApplicable,
+                        lazyLoadAttr.ApplicationSyntaxReference?.GetSyntax().GetLocation(), fieldName));
+                }
                 _infoStore.propTypeMappings[fieldName] = typeSymbol;
                 if (saveSeparately)
                 {
@@ -268,32 +274,43 @@ namespace Salvavida.Generator
 
                 _infoStore!.savableMembers.Add(propertyName);
 
+                var isSavable = IsTypeISavable(elemTypeSymbols.Last());
+
                 // Parse LazyLoadAttribute
                 LazyLoadConfig lazyConfig = default;
                 if (lazyLoadAttr != null)
                 {
-                    // Get default value for BatchLoadCount from the DefaultBatchLoadCount constant
-                    var attrClass = lazyLoadAttr.AttributeClass;
-                    if (attrClass != null)
+                    if (!isSavable)
                     {
-                        foreach (var member in attrClass.GetMembers())
+                        ctx.SourceProductionContext.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.LazyLoadAttributeNotApplicable,
+                            lazyLoadAttr.ApplicationSyntaxReference?.GetSyntax().GetLocation(), fieldName));
+                    }
+                    else
+                    {
+                        // Get default value for BatchLoadCount from the DefaultBatchLoadCount constant
+                        var attrClass = lazyLoadAttr.AttributeClass;
+                        if (attrClass != null)
                         {
-                            if (member is IFieldSymbol { Name: "DefaultBatchLoadCount", IsConst: true } field)
+                            foreach (var member in attrClass.GetMembers())
                             {
-                                lazyConfig.BatchLoadCount = (int)field.ConstantValue!;
+                                if (member is IFieldSymbol { Name: "DefaultBatchLoadCount", IsConst: true } field)
+                                {
+                                    lazyConfig.BatchLoadCount = (int)field.ConstantValue!;
+                                }
                             }
                         }
-                    }
 
-                    // Override with explicit values from attribute usage
-                    foreach (var namedArg in lazyLoadAttr.NamedArguments)
-                    {
-                        if (namedArg.Key == "Mode")
-                            lazyConfig.Mode = (LazyLoadMode)(int)namedArg.Value.Value!;
-                        else if (namedArg.Key == "UseAbstractType")
-                            lazyConfig.UseAbstractType = (bool)namedArg.Value.Value!;
-                        else if (namedArg.Key == "BatchLoadCount")
-                            lazyConfig.BatchLoadCount = (int)namedArg.Value.Value!;
+                        // Override with explicit values from attribute usage
+                        foreach (var namedArg in lazyLoadAttr.NamedArguments)
+                        {
+                            if (namedArg.Key == "Mode")
+                                lazyConfig.Mode = (LazyLoadMode)(int)namedArg.Value.Value!;
+                            else if (namedArg.Key == "UseAbstractType")
+                                lazyConfig.UseAbstractType = (bool)namedArg.Value.Value!;
+                            else if (namedArg.Key == "BatchLoadCount")
+                                lazyConfig.BatchLoadCount = (int)namedArg.Value.Value!;
+                        }
                     }
                 }
                 _infoStore!.lazyLoadConfigs[fieldName] = lazyConfig;
@@ -302,7 +319,6 @@ namespace Salvavida.Generator
                 var concreteTypeString = GetCollectionConcreteTypeString(collectionType, elemTypeSymbols, lazyConfig);
                 var watchCollectionTypeString = GetWatchCollectionTypeString(collectionType, elemTypeSymbols);
                 var elemTypeString = elemTypeSymbols.Last().ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                var isSavable = IsTypeISavable(elemTypeSymbols.Last());
                 WriteCollectionProperty(sb, ctx, propertyName, fieldName,
                     typeSymbol, collectionTypeString, concreteTypeString, watchCollectionTypeString, elemTypeString, saveSeparately, isSavable, lazyConfig);
             }
