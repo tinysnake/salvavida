@@ -127,12 +127,54 @@ namespace Salvavida.Tests
         }
 
         [Fact]
-        public void Middle_CrossBucket_ThrowsArgumentException()
+        public void Middle_CrossBucket_ReturnsMidpoint()
         {
             var prev = "0~VV";
             var next = "1~VW";
 
-            Assert.Throws<ArgumentException>(() => LexoRank.Middle(prev, next, DEFAULT_PRECISION_DIGITS));
+            var result = LexoRank.Middle(prev, next, DEFAULT_PRECISION_DIGITS);
+
+            Assert.NotNull(result);
+
+            Assert.True(string.Compare(prev, result, StringComparison.Ordinal) < 0);
+            Assert.True(string.Compare(result, next, StringComparison.Ordinal) < 0);
+        }
+
+        [Fact]
+        public void Middle_CrossBucket_EdgeCasesHandlesCorrectly()
+        {
+            var prev = "0~yyyyyz";
+            var next = "1~VV";
+
+            var result = LexoRank.Middle(prev, next, DEFAULT_PRECISION_DIGITS);
+
+            Assert.NotNull(result);
+
+            LexoRank.Parse(prev.AsSpan(), out var prevBucketId, out var prevRank);
+            LexoRank.Parse(next.AsSpan(), out var nextBucketId, out var nextRank);
+            LexoRank.Parse(result.AsSpan(), out var resultBucketId, out var resultRank);
+
+            Assert.NotEqual(prevBucketId.ToString(), resultBucketId.ToString());
+            Assert.Equal(nextBucketId.ToString(), resultBucketId.ToString());
+            Assert.True(LexoRank.Compare(resultBucketId, prevBucketId) > 0);
+            Assert.True(LexoRank.Compare(resultRank, prevRank) < 0);
+            Assert.True(LexoRank.Compare(resultRank, nextRank) < 0);
+
+            prev = "0~VV";
+            next = "1~00001";
+            result = LexoRank.Middle(prev, next, DEFAULT_PRECISION_DIGITS);
+
+            Assert.NotNull(result);
+
+            LexoRank.Parse(prev.AsSpan(), out prevBucketId, out prevRank);
+            LexoRank.Parse(next.AsSpan(), out nextBucketId, out nextRank);
+            LexoRank.Parse(result.AsSpan(), out resultBucketId, out resultRank);
+
+            Assert.Equal(prevBucketId.ToString(), resultBucketId.ToString());
+            Assert.NotEqual(nextBucketId.ToString(), resultBucketId.ToString());
+            Assert.True(LexoRank.Compare(resultBucketId, nextBucketId) < 0);
+            Assert.True(LexoRank.Compare(resultRank, prevRank) > 0);
+            Assert.True(LexoRank.Compare(resultRank, nextRank) > 0);
         }
 
         [Fact]
@@ -310,7 +352,7 @@ namespace Salvavida.Tests
                 LexoRank.Parse(ranks[i - 1].AsSpan(), out _, out var prevRank);
                 LexoRank.Parse(ranks[i].AsSpan(), out _, out var currRank);
                 var cmp = LexoRank.Compare(prevRank, currRank);
-                Assert.True(cmp < 0, $"Order violated at index {i}: prev={ranks[i-1]}, curr={ranks[i]}, cmp={cmp}");
+                Assert.True(cmp < 0, $"Order violated at index {i}: prev={ranks[i - 1]}, curr={ranks[i]}, cmp={cmp}");
             }
         }
 
@@ -335,7 +377,7 @@ namespace Salvavida.Tests
                 LexoRank.Parse(ranks[i - 1].AsSpan(), out _, out var prevRank);
                 LexoRank.Parse(ranks[i].AsSpan(), out _, out var currRank);
                 var cmp = LexoRank.Compare(prevRank, currRank);
-                Assert.True(cmp < 0, $"Order violated at index {i}: prev={ranks[i-1]}, curr={ranks[i]}, cmp={cmp}");
+                Assert.True(cmp < 0, $"Order violated at index {i}: prev={ranks[i - 1]}, curr={ranks[i]}, cmp={cmp}");
             }
         }
 
@@ -350,7 +392,7 @@ namespace Salvavida.Tests
             var random = new Random(42);
             for (int i = 0; i < 100; i++)
             {
-                var insertIndex = random.Next(1, ranks.Count+1);
+                var insertIndex = random.Next(1, ranks.Count + 1);
                 var prev = insertIndex == 0 ? null : ranks[insertIndex - 1];
                 var next = insertIndex == ranks.Count ? null : ranks[insertIndex];
                 try
@@ -375,7 +417,7 @@ namespace Salvavida.Tests
                 LexoRank.Parse(ranks[i - 1].AsSpan(), out _, out var prevRank);
                 LexoRank.Parse(ranks[i].AsSpan(), out _, out var currRank);
                 var cmp = LexoRank.Compare(prevRank, currRank);
-                Assert.True(cmp < 0, $"Order violated at index {i}: prev={ranks[i-1]}, curr={ranks[i]}, cmp={cmp}");
+                Assert.True(cmp < 0, $"Order violated at index {i}: prev={ranks[i - 1]}, curr={ranks[i]}, cmp={cmp}");
             }
         }
 
@@ -495,7 +537,7 @@ namespace Salvavida.Tests
 
             var result = buffer[..length];
             Assert.True(length > 0);
-            
+
             // Parse and compare ranks only
             LexoRank.Parse(result, out _, out var resultRank);
             LexoRank.Parse(initValue.AsSpan(), out _, out var initRank);
@@ -512,7 +554,7 @@ namespace Salvavida.Tests
 
             var result = buffer[..length];
             Assert.True(length > 0);
-            
+
             // Parse and compare ranks only
             LexoRank.Parse(result, out _, out var resultRank);
             LexoRank.Parse(initValue.AsSpan(), out _, out var initRank);
@@ -575,9 +617,10 @@ namespace Salvavida.Tests
 
             Assert.NotNull(result);
             Assert.True(step > 0);
-            Assert.False(reverseOrder);
+            Assert.True(reverseOrder);
             LexoRank.Parse(result.AsSpan(), out var bucketId, out var rank);
-            Assert.Equal("0", bucketId.ToString());
+            Assert.Equal(LexoRank.NEXT_BUCKET_ID, bucketId.ToString());
+            Assert.NotEmpty(new string(rank));
         }
 
         [Fact]
@@ -593,25 +636,70 @@ namespace Salvavida.Tests
         [Fact]
         public void Rebalance_GeneratedRanksAreOrdered()
         {
-            var currentRank = "0~VV";
-            var startRank = LexoRank.Rebalance(currentRank, 5, out int step, out bool reverseOrder);
+            const int precisionDigits = 1;
+            const int count = 20;
+            List<string> ranks = new(count) { LexoRank.GetInitValue(precisionDigits, bucketId: LexoRank.MAX_BUCKET_ID) };
+            for (var i = 0; i < count - 1; i++)
+            {
+                ranks.Add(LexoRank.Generate(ranks[i], null, precisionDigits));
+            }
+
+            var startRank = LexoRank.Rebalance(ranks[0], count, out var step, out var reverseOrder);
 
             Assert.False(reverseOrder);
+            Assert.True(startRank.AsSpan().CompareTo(LexoRank.GetInitValue(precisionDigits, LexoRank.DEFAULT_BUCKET_ID), StringComparison.Ordinal) < 0);
 
             Span<char> buffer = stackalloc char[128];
             string prevRank = startRank;
-            int precisionDigits = LexoRank.CalculatePrecisionDigits(5);
-
-            for (int i = 1; i <= 5; i++)
+            ranks[0] = prevRank;
+            for (int i = 1; i < count / 2; i++)
             {
                 var length = LexoRank.GenNext(prevRank, precisionDigits, buffer, step);
                 var nextRank = new string(buffer[..length]);
+                ranks[i] = nextRank;
 
-                LexoRank.Parse(prevRank.AsSpan(), out _, out var prevRankValue);
-                LexoRank.Parse(nextRank.AsSpan(), out _, out var nextRankValue);
-
-                Assert.True(LexoRank.Compare(prevRankValue, nextRankValue) < 0);
                 prevRank = nextRank;
+            }
+
+            for (var i = 1; i < count; i++)
+            {
+                Assert.True(ranks[i - 1].AsSpan().CompareTo(ranks[i], StringComparison.Ordinal) < 0);
+            }
+        }
+
+        [Fact]
+        public void Rebalance_GeneratedRanksAreReversed()
+        {
+            const int precisionDigits = 1;
+            const int count = 20;
+            List<string> ranks = new(count) { LexoRank.GetInitValue(precisionDigits, bucketId: LexoRank.DEFAULT_BUCKET_ID) };
+            for (var i = 0; i < count - 1; i++)
+            {
+                ranks.Add(LexoRank.Generate(ranks[i], null, precisionDigits));
+            }
+
+            var startRank = LexoRank.Rebalance(ranks[0], count, out var step, out var reverseOrder);
+
+
+            Assert.True(reverseOrder);
+            Assert.True(startRank.AsSpan().CompareTo(LexoRank.GetInitValue(precisionDigits, LexoRank.NEXT_BUCKET_ID), StringComparison.Ordinal) > 0);
+
+            Span<char> buffer = stackalloc char[128];
+            string lastRank = startRank;
+            ranks[^1] = lastRank;
+            var len = count - 1;
+            while (len-- > count / 2)
+            {
+                var length = LexoRank.GenPrev(lastRank, precisionDigits, buffer, step);
+                var prevRank = new string(buffer[..length]);
+                ranks[len] = prevRank;
+
+                lastRank = prevRank;
+            }
+
+            for (var i = 1; i < count; i++)
+            {
+                Assert.True(ranks[i - 1].AsSpan().CompareTo(ranks[i], StringComparison.Ordinal) < 0);
             }
         }
 

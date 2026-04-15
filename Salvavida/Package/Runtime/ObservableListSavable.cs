@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Drawing;
 
 namespace Salvavida
 {
@@ -120,14 +121,30 @@ namespace Salvavida
 
                 // First pass: assign new ranks; null slots written as clean (about to be saved)
                 _nullSlots.Clear();
-                for (int i = 0; i < _items.Count; i++)
+                if (reverseOrder)
                 {
-                    var item = _items[i];
-                    if (item != null)
-                        item.SvId = rank;
-                    else
-                        _nullSlots[i] = (rank, false);
-                    rank = LexoRank.Generate(rank, null, precisionDigits, stepSize: step);
+                    var len = _items.Count;
+                    while (len-- > 0)
+                    {
+                        var item = _items[len];
+                        if(item!=null)
+                            item.SvId = rank;
+                        else
+                            _nullSlots[len] = (rank, false);
+                        rank = LexoRank.Generate(null, rank, precisionDigits, stepSize: step);
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < _items.Count; i++)
+                    {
+                        var item = _items[i];
+                        if (item != null)
+                            item.SvId = rank;
+                        else
+                            _nullSlots[i] = (rank, false);
+                        rank = LexoRank.Generate(rank, null, precisionDigits, stepSize: step);
+                    }
                 }
 
                 // Second pass: save all items using updated IDs

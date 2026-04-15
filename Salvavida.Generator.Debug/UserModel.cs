@@ -1,4 +1,5 @@
 #nullable disable
+#pragma warning disable CS0169
 
 namespace Salvavida.Generator.Debug
 {

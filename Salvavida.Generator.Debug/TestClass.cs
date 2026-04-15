@@ -3,6 +3,9 @@ using Salvavida;
 using System.ComponentModel;
 using UnityEngine;
 #nullable disable
+#pragma warning disable SV204
+#pragma warning disable SV203
+#pragma warning disable CS0169
 
 namespace Salvavida.Generator.Debug
 {

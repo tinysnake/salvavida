@@ -8,10 +8,14 @@ namespace Salvavida
     /// </summary>
     public static class LexoRank
     {
-        private const string CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-        private const char SEPARATOR = '~';
-        private const int DEFAULT_STEP_SIZE = 8;
-        private const int BASE = 62;
+        public const string CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        public const char SEPARATOR = '~';
+        public const int DEFAULT_STEP_SIZE = 8;
+        public const int BASE = 62;
+        public const char MIDDLE_CHAR = 'V';
+        public const string DEFAULT_BUCKET_ID = "0";
+        public const string NEXT_BUCKET_ID = "1";
+        public const string MAX_BUCKET_ID = "2";
 
         #region Public API - Precision Calculation
 
@@ -98,7 +102,7 @@ namespace Salvavida
         public static int Build(ReadOnlySpan<char> bucketId, ReadOnlySpan<char> rank, Span<char> buffer)
         {
             var totalLength = bucketId.Length + 1 + rank.Length;
-            if(buffer.Length< totalLength)
+            if (buffer.Length < totalLength)
                 throw new ArgumentException($"Buffer length {buffer.Length} is too small for the result length {totalLength}", nameof(buffer));
 
             var position = 0;
@@ -125,7 +129,7 @@ namespace Salvavida
             if (precisionDigits <= 0)
                 throw new ArgumentOutOfRangeException(nameof(precisionDigits), "PrecisionDigits must be greater than 0");
             if (string.IsNullOrEmpty(bucketId))
-                bucketId = "0";
+                bucketId = DEFAULT_BUCKET_ID;
 
             // Calculate middle value in Base62
             // 'V' is the middle character (31 in 0-61 range)
@@ -134,11 +138,15 @@ namespace Salvavida
 
             for (int i = 0; i < precisionDigits; i++)
             {
-                buffer[i] = 'V';
+                buffer[i] = MIDDLE_CHAR;
             }
 
-            var rank = new string(buffer);
-            return $"{bucketId}~{rank}";
+            var bucketIdLen = bucketId.Length;
+            Span<char> result = stackalloc char[bucketIdLen + precisionDigits + 1];
+            bucketId.AsSpan().CopyTo(result);
+            result[bucketIdLen] = SEPARATOR;
+            buffer.CopyTo(result[(bucketIdLen + 1)..]);
+            return new string(result);
         }
 
         #endregion
@@ -316,16 +324,39 @@ namespace Salvavida
             Parse(next, out var nextBucketId, out var nextRank);
 
             // Validate that bucket IDs match
-            if (!prevBucketId.SequenceEqual(nextBucketId))
-                throw new ArgumentException("BucketId mismatch: prev and next must be in the same bucket");
+            var crossBucket = false;
+            var bucketCompareResult = prevBucketId.CompareTo(nextBucketId, StringComparison.Ordinal);
+            switch (bucketCompareResult)
+            {
+                case 1:
+                    throw new ArgumentException("prev bucketId must be less than next bucketId");
+                case -1:
+                    crossBucket = true;
+                    break;
+            }
 
             // Check if ranks are equal
             if (prevRank.SequenceEqual(nextRank))
                 throw new ArgumentException("prev and next cannot be equal");
 
-            // Check order
-            if (CompareInternal(prevRank, nextRank) >= 0)
+            ReadOnlySpan<char> finalBucket = prevBucketId;
+
+            if (!crossBucket && CompareInternal(prevRank, nextRank) >= 0)
                 throw new ArgumentException("prev must be less than next");
+            // Check order
+            if (crossBucket)
+            {
+                if (prevRank.Length > nextRank.Length)
+                {
+                    finalBucket = nextBucketId;
+                    prevRank = GetMinValue(precisionDigits);
+                }
+                else
+                {
+                    finalBucket = prevBucketId;
+                    nextRank = GetMaxValue(precisionDigits);
+                }
+            }
 
             // Calculate middle rank
             Span<char> rankBuffer = stackalloc char[Math.Max(prevRank.Length, nextRank.Length) + 1];
@@ -333,7 +364,7 @@ namespace Salvavida
 
             // Build the result
             var fullRank = rankBuffer[..rankLength];
-            var result = Build(prevBucketId, fullRank, buffer);
+            var result = Build(finalBucket, fullRank, buffer);
             return result;
         }
 
@@ -350,7 +381,7 @@ namespace Salvavida
         /// <param name="bucketId">The bucket ID (default: "0")</param>
         /// <param name="stepSize">The step size (default: 8)</param>
         /// <returns>A generated rank value</returns>
-        public static string Generate(string? prev, string? next, int precisionDigits, string bucketId = "0", int stepSize = DEFAULT_STEP_SIZE)
+        public static string Generate(string? prev, string? next, int precisionDigits, string bucketId = DEFAULT_BUCKET_ID, int stepSize = DEFAULT_STEP_SIZE)
         {
             if (prev == null && next == null)
                 return GetInitValue(precisionDigits, bucketId);
@@ -382,7 +413,7 @@ namespace Salvavida
         /// <param name="bucketId">The bucket ID (default: "0")</param>
         /// <param name="stepSize">The step size (default: 8)</param>
         /// <returns>The length of the written result</returns>
-        public static int Generate(ReadOnlySpan<char> prev, ReadOnlySpan<char> next, int precisionDigits, Span<char> buffer, string bucketId = "0", int stepSize = DEFAULT_STEP_SIZE)
+        public static int Generate(ReadOnlySpan<char> prev, ReadOnlySpan<char> next, int precisionDigits, Span<char> buffer, string bucketId = DEFAULT_BUCKET_ID, int stepSize = DEFAULT_STEP_SIZE)
         {
             if (prev.IsEmpty && next.IsEmpty)
             {
@@ -420,26 +451,49 @@ namespace Salvavida
                 throw new ArgumentOutOfRangeException(nameof(count), "Count must be greater than 0");
 
             int precisionDigits = CalculatePrecisionDigits(count);
-            long totalCapacity = (long)Math.Pow(BASE, precisionDigits);
-            step = (int)(totalCapacity / (count + 1));
+            int totalCapacity = (int)Math.Pow(BASE, precisionDigits);
+            step = totalCapacity / (count + 1);
 
             Parse(currentRank.AsSpan(), out var bucketId, out var rankValue);
 
-            long offset = (long)count * step / 2;
+            reverseOrder = true;
+            if (DEFAULT_BUCKET_ID.AsSpan().CompareTo(bucketId, StringComparison.Ordinal) == 0)
+                bucketId = NEXT_BUCKET_ID;
+            else if (NEXT_BUCKET_ID.AsSpan().CompareTo(bucketId, StringComparison.Ordinal) == 0)
+                bucketId = MAX_BUCKET_ID;
+            else if (MAX_BUCKET_ID.AsSpan().CompareTo(bucketId, StringComparison.Ordinal) <= 0)
+            {
+                bucketId = DEFAULT_BUCKET_ID;
+                reverseOrder = false;
+            }
+
+            int offset = count * step / 2;
 
             Span<char> initBuffer = stackalloc char[precisionDigits];
             for (int i = 0; i < precisionDigits; i++)
-                initBuffer[i] = 'V';
-
+                initBuffer[i] = MIDDLE_CHAR;
             Span<char> rankBuffer = stackalloc char[initBuffer.Length + 2];
-            var length = DecrementRank(initBuffer, (int)offset, precisionDigits, rankBuffer, out var underflow);
-            if (underflow)
+            int length = 0;
+
+            if (reverseOrder)
             {
-                var minVal = GetMinValue(precisionDigits);
-                length = CalculateMiddle(minVal.AsSpan(), initBuffer, rankBuffer);
+                length = IncrementRank(initBuffer, offset, precisionDigits, rankBuffer, out var overflow);
+                if (overflow)
+                {
+                    var maxVal = GetMaxValue(precisionDigits);
+                    length = CalculateMiddle(initBuffer, maxVal, rankBuffer);
+                }
+            }
+            else
+            {
+                length = DecrementRank(initBuffer, offset, precisionDigits, rankBuffer, out var underflow);
+                if (underflow)
+                {
+                    var minVal = GetMinValue(precisionDigits);
+                    length = CalculateMiddle(minVal.AsSpan(), initBuffer, rankBuffer);
+                }
             }
 
-            reverseOrder = false;
             return Build(bucketId, rankBuffer[..length]).ToString();
         }
 
