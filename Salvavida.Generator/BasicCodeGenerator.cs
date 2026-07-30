@@ -784,6 +784,17 @@ namespace Salvavida.Generator
                     sb.WriteLine("serializer.SaveNoPushPath(this, ctx);");
                 }
 
+                var localSavables = _infoStore!.savableMembers.Except(_infoStore.separatedProperties).Except(_infoStore.separatedCollections).Except(_infoStore.nonSeparatedCollections).ToArray();
+                foreach (var prop in localSavables)
+                {
+                    var fieldName = GetOriginName(prop);
+                    sb.WriteLine($"using (ctx.Path.UsePush(\"{prop}\", PathBuilder.Type.Collection))");
+                    using (sb.CurlyBracketsScope())
+                    {
+                        sb.WriteLine($"({fieldName} as ISavable)?.Serialize(serializer, ctx);");
+                    }
+                }
+
                 foreach (var prop in _infoStore!.separatedProperties)
                 {
                     var fieldName = GetOriginName(prop);
@@ -811,11 +822,16 @@ namespace Salvavida.Generator
             sb.WriteLine("void ISavable.AfterDeserialize(Serializer serializer, SerializeContext ctx)");
             using (sb.CurlyBracketsScope())
             {
-                var localSavables = _infoStore!.savableMembers.Except(_infoStore.separatedProperties).Except(_infoStore.separatedCollections).ToArray();
+                var localSavables = _infoStore!.savableMembers.Except(_infoStore.separatedProperties).Except(_infoStore.separatedCollections).Except(_infoStore.nonSeparatedCollections).ToArray();
                 foreach (var prop in localSavables)
                 {
                     var fieldName = GetOriginName(prop);
                     sb.WriteLine($"OnChildDeserialized({fieldName}, \"{prop}\");");
+                    sb.WriteLine($"using (ctx.Path.UsePush(\"{prop}\", PathBuilder.Type.Collection))");
+                    using (sb.CurlyBracketsScope())
+                    {
+                        sb.WriteLine($"({fieldName} as ISavable)?.AfterDeserialize(serializer, ctx);");
+                    }
                 }
 
                 foreach (var prop in _infoStore!.separatedProperties)
