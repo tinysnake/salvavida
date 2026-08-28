@@ -19,6 +19,58 @@ namespace Salvavida.Tests
         }
 
         [Fact]
+        public void Serialize_WhenOnlyNestedSavableCollectionIsDirty_ClearsCollectionAndRootDirtyState()
+        {
+            var serializer = new InMemorySerializer();
+            var testObj = CreateRootedObj(serializer);
+            testObj.SetSeparatelySavedSavableCustomDataDict(new Dictionary<string, SavableCustomData?>
+            {
+                ["item"] = new SavableCustomData { SavableId = 1, SavableName = "initial" }
+            });
+
+            ((ISavable)testObj).SetDirty(false, true);
+            Assert.False(testObj.IsDirty);
+            Assert.False(testObj.SeparatelySavedSavableCustomDataDict!.IsDirty);
+
+            testObj.SeparatelySavedSavableCustomDataDict["item"]!.SavableName = "updated";
+            Assert.True(testObj.IsDirty);
+            Assert.False(testObj.IsSelfDirty);
+            Assert.True(testObj.SeparatelySavedSavableCustomDataDict.IsDirty);
+
+            using (serializer.BeginFreshAction(testObj, out var ctx))
+            {
+                testObj.Serialize(serializer, ctx);
+            }
+
+            Assert.False(testObj.SeparatelySavedSavableCustomDataDict.IsDirty);
+            Assert.False(testObj.IsDirty);
+        }
+
+        [Fact]
+        public void Serialize_WhenNestedSaveFails_PreservesDirtyStateForRetry()
+        {
+            var serializer = new InMemorySerializer();
+            var testObj = CreateRootedObj(serializer);
+            testObj.SetSeparatelySavedSavableCustomDataDict(new Dictionary<string, SavableCustomData?>
+            {
+                ["item"] = new SavableCustomData { SavableId = 1, SavableName = "initial" }
+            });
+
+            ((ISavable)testObj).SetDirty(false, true);
+            testObj.SeparatelySavedSavableCustomDataDict["item"]!.SavableName = "updated";
+            serializer.FailSaves = true;
+
+            Assert.Throws<SalvavidaSerializeException>(() =>
+            {
+                using var locker = serializer.BeginFreshAction(testObj, out var ctx);
+                testObj.Serialize(serializer, ctx);
+            });
+
+            Assert.True(testObj.SeparatelySavedSavableCustomDataDict.IsDirty);
+            Assert.True(testObj.IsDirty);
+        }
+
+        [Fact]
         public void SerializeAndVerify_BasicFields()
         {
             var serializer = new InMemorySerializer();

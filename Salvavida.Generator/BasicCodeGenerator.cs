@@ -810,6 +810,7 @@ namespace Salvavida.Generator
                     sb.WriteLine($"{fieldName}Ob?.TrySerialize(serializer, ctx);");
                 }
 
+                sb.WriteLine("((ISavable)this).SetDirty(false, true);");
                 sb.WriteLine("if (isSelfDirty) OnAfterSerialize(serializer, ctx);");
             }
 

@@ -66,8 +66,13 @@ namespace Salvavida.Tests
 
         #region Serializer Implementation
 
+        public bool FailSaves { get; set; }
+
         protected override void DoSaveObjectImpl<T>(T obj, Type type, SerializeContext ctx)
         {
+            if (FailSaves)
+                throw new InvalidOperationException("Injected save failure");
+
             var path = ctx.Path.ToString();
             _storage[path] = obj == null ? null : JsonSerializer.Serialize(obj, _serializeOptions);
         }

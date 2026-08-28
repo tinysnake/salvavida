@@ -100,6 +100,7 @@ namespace Salvavida
                 return;
             using var __p = ctx.Path.UsePush(savable.SvId, pathType);
             savable.Serialize(serializer, ctx);
+            savable.SetDirty(false, true);
         }
 
         public static ObservableArraySavableBase<TElem> LoadCollectionSavableAbstract<T, TElem>(this T _, Serializer serializer, SerializeContext ctx, ReadOnlySpan<char> propName, bool saveSeparately, ref TElem?[]? src, CollectionOptions config)
