@@ -125,7 +125,7 @@ namespace Salvavida
             {
                 if (serializer.HasNoPushPath(ctx))
                 {
-                    CollectionMetadata metadata = serializer.Read<CollectionMetadata>(ctx, SvHelper.PROPNAME_COLLECTION_METADATA, PathBuilder.Type.Property);
+                    CollectionMetadata metadata = serializer.ReadNoPushPath<CollectionMetadata>(ctx);
                     _dict = new Dictionary<TKey, TValue?>(metadata.Count);
                 }
             }
