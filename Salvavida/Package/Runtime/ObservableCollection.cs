@@ -119,6 +119,8 @@ namespace Salvavida
             _isDirty = true;
 
             CollectionChanged?.Invoke(e);
+            if (!SaveSeparately)
+                PropertyChanged?.Invoke((TCol)this, SvId);
         }
     }
 

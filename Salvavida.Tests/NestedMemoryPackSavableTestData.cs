@@ -53,3 +53,12 @@ public partial class NestedCollectionChild
 
     public void SetSeparateValue(string value) => SeparateValue = value;
 }
+
+[Savable]
+[MemoryPackable]
+public partial class InlineCollectionMemoryPackRoot
+{
+    [MemoryPackInclude]
+    private List<string>? _items;
+}
+

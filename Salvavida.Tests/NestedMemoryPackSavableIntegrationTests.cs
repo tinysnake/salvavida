@@ -46,4 +46,49 @@ public class NestedMemoryPackSavableIntegrationTests
         var loadedChild = Assert.IsType<NestedCollectionChild>(loadedEntry.Child);
         Assert.Equal("nested-value", loadedChild.SeparateValue);
     }
+
+    [Fact]
+    public void InlineCollection_ModifyingObservableList_MarksParentSelfDirtyAndPersistsChanges()
+    {
+        var serializer = new MemoryPackInMemorySerializer();
+        var root = new InlineCollectionMemoryPackRoot { SvId = "root" };
+        root.SetItems(["initial"]);
+
+        using (serializer.BeginFreshAction(out var context))
+        {
+            context.Path.Push(root.SvId, PathBuilder.Type.Property);
+            root.Serialize(serializer, context);
+        }
+
+        Assert.False(root.IsSelfDirty);
+        Assert.False(root.IsDirty);
+
+        root.Items.Add("added-item");
+
+        Assert.True(root.IsSelfDirty);
+        Assert.True(root.IsDirty);
+
+        using (serializer.BeginFreshAction(out var context))
+        {
+            context.Path.Push(root.SvId, PathBuilder.Type.Property);
+            root.Serialize(serializer, context);
+        }
+
+        var loadedRoot = Assert.IsType<InlineCollectionMemoryPackRoot>(serializer.FreshRead<InlineCollectionMemoryPackRoot>("root"));
+        Assert.NotNull(loadedRoot.Items);
+        Assert.Equal(new[] { "initial", "added-item" }, loadedRoot.Items);
+
+        root.Items.Remove("initial");
+        Assert.True(root.IsSelfDirty);
+
+        using (serializer.BeginFreshAction(out var context))
+        {
+            context.Path.Push(root.SvId, PathBuilder.Type.Property);
+            root.Serialize(serializer, context);
+        }
+
+        var reloadedRoot = Assert.IsType<InlineCollectionMemoryPackRoot>(serializer.FreshRead<InlineCollectionMemoryPackRoot>("root"));
+        Assert.NotNull(reloadedRoot.Items);
+        Assert.Equal(new[] { "added-item" }, reloadedRoot.Items);
+    }
 }
