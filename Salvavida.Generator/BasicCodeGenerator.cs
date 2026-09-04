@@ -17,6 +17,7 @@ namespace Salvavida.Generator
         public string Generate(CodeGenerationContext ctx)
         {
             _infoStore = new CodeGenInfoStore();
+            CollectBridgeInterfaces(ctx);
             var alreadySR = CodeGenHelper.GetIsAlreadySavableRoot(ctx.TypeSymbol);
             if (!alreadySR && CodeGenHelper.GetIsSavableRoot(ctx.TypeSymbol, true))
             {
@@ -48,6 +49,64 @@ namespace Salvavida.Generator
             {
                 _infoStore = null;
             }
+        }
+
+        /// <summary>
+        /// Collects domain interfaces implemented by the class that are NOT ISavable-derived
+        /// themselves (e.g. IEntityDataSection). For each of them the generator emits a bridge
+        /// implementation of <c>Salvavida.ISavable&lt;I&gt;</c> so that
+        /// <c>ObservableCollection&lt;TCol, TElem&gt;.TryWatch</c> pattern matching succeeds when the
+        /// collection element type is the domain interface instead of the concrete class.
+        /// Without the bridge, <c>obj is ISavable&lt;TElem&gt;</c> silently fails for such items:
+        /// no SvParent gets set and no PropertyChanged subscription is made, so every change
+        /// inside the item is invisible to the save system.
+        /// </summary>
+        private void CollectBridgeInterfaces(CodeGenerationContext ctx)
+        {
+            var all = ctx.TypeSymbol.AllInterfaces;
+            foreach (var iface in all)
+            {
+                var orig = iface.OriginalDefinition;
+                var origName = orig.ToDisplayString();
+                // Skip ISavable itself and every ISavable<T>/ISvPropertyChanged<T> instantiation:
+                // the self-typed ISavable<TSelf> is already generated, and any manually written
+                // ISavable<I> implementation must not be duplicated by a generated bridge.
+                if (origName == "Salvavida.ISavable" || origName == "Salvavida.ISavable<T>" || origName == "Salvavida.ISvPropertyChanged<T>")
+                    continue;
+                // Skip well-known framework interfaces (IEquatable<T>, IDisposable, IEnumerable<T>, ...)
+                var ns = orig.ContainingNamespace;
+                if (ns != null && !ns.IsGlobalNamespace)
+                {
+                    var nsName = ns.ToDisplayString();
+                    if (nsName == "System" || nsName.StartsWith("System.", StringComparison.Ordinal))
+                        continue;
+                }
+                // Skip if the class already implements ISavable<I> for this exact interface.
+                var alreadyBridgeable = false;
+                foreach (var other in all)
+                {
+                    if (other is INamedTypeSymbol namedOther
+                        && namedOther.OriginalDefinition.ToDisplayString() == "Salvavida.ISavable<T>"
+                        && SymbolEqualityComparer.Default.Equals(namedOther.TypeArguments[0], iface))
+                    {
+                        alreadyBridgeable = true;
+                        break;
+                    }
+                }
+                if (alreadyBridgeable)
+                    continue;
+                _infoStore!.bridgeInterfaces.Add(iface);
+            }
+
+            if (_infoStore!.bridgeInterfaces.Count == 0)
+                return;
+
+            // Deterministic order for stable generated output.
+            _infoStore!.bridgeInterfaces.Sort((a, b) => string.CompareOrdinal(
+                a.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                b.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+            foreach (var iface in _infoStore!.bridgeInterfaces)
+                _infoStore!.bridgeInterfaceNames.Add(iface.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
         }
 
         private void WriteNamespace(ScriptBuilder sb, CodeGenerationContext ctx, out bool hasCurlyBrackets)
@@ -87,6 +146,8 @@ namespace Salvavida.Generator
                 }
             }
             sb.Write($"ISavable<{className}>", true);
+            for (var i = 0; i < _infoStore!.bridgeInterfaceNames.Count; i++)
+                sb.Write($", Salvavida.ISavable<{_infoStore.bridgeInterfaceNames[i]}>", true);
             sb.WriteLine();
             sb.BeginCurlyBrackets();
         }
@@ -578,6 +639,20 @@ namespace Salvavida.Generator
             // ISavable Implementation
             sb.WriteLine($"public event PropertyChangeEventHandler<{_infoStore!.className}> PropertyChanged;");
             sb.WriteLine();
+            // Bridge event implementations for domain interfaces (see CollectBridgeInterfaces).
+            // Explicit interface implementations avoid conflicts with the self-typed event above.
+            for (var i = 0; i < _infoStore!.bridgeInterfaceNames.Count; i++)
+            {
+                var bridgeName = _infoStore.bridgeInterfaceNames[i];
+                sb.WriteLine($"private PropertyChangeEventHandler<{bridgeName}> _svBridgeChanged_{i};");
+                sb.WriteLine($"event PropertyChangeEventHandler<{bridgeName}> Salvavida.ISvPropertyChanged<{bridgeName}>.PropertyChanged");
+                using (sb.CurlyBracketsScope())
+                {
+                    sb.WriteLine($"add {{ _svBridgeChanged_{i} += value; }}");
+                    sb.WriteLine($"remove {{ _svBridgeChanged_{i} -= value; }}");
+                }
+                sb.WriteLine();
+            }
             AddAttributePreventSerialize(sb, true);
             sb.WriteLine("public ISavable SvParent { get; private set; }");
             sb.WriteLine();
@@ -656,6 +731,8 @@ namespace Salvavida.Generator
             {
                 sb.WriteLine("_svIsDirty = true;");
                 sb.WriteLine("PropertyChanged?.Invoke(this, propName);");
+                for (var i = 0; i < _infoStore!.bridgeInterfaceNames.Count; i++)
+                    sb.WriteLine($"_svBridgeChanged_{i}?.Invoke(this, propName);");
             }
 
             sb.WriteLine();
@@ -690,6 +767,8 @@ namespace Salvavida.Generator
                     }
                 }
                 sb.WriteLine("PropertyChanged?.Invoke(this, childName);");
+                for (var i = 0; i < _infoStore!.bridgeInterfaceNames.Count; i++)
+                    sb.WriteLine($"_svBridgeChanged_{i}?.Invoke(this, childName);");
             }
 
             sb.WriteLine();

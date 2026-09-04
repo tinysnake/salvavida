@@ -39,6 +39,16 @@ namespace Salvavida.Generator
         public readonly Dictionary<ITypeSymbol, bool> savableTypes = new(SymbolEqualityComparer.Default);
         public readonly Dictionary<string, LazyLoadConfig> lazyLoadConfigs = new();
         /// <summary>
+        /// Domain interfaces (e.g. IEntityDataSection) implemented by the class that are NOT
+        /// ISavable-derived themselves. For each of them a bridge implementation of
+        /// <c>Salvavida.ISavable&lt;I&gt;</c> / <c>Salvavida.ISvPropertyChanged&lt;I&gt;</c> is emitted, so that
+        /// <c>ObservableCollection&lt;TCol, TElem&gt;.TryWatch</c> pattern matching succeeds when the
+        /// collection element type is the domain interface instead of the concrete class.
+        /// </summary>
+        public readonly List<ITypeSymbol> bridgeInterfaces = new();
+        /// <summary>Fully-qualified display names of <see cref="bridgeInterfaces"/> (deterministic order).</summary>
+        public readonly List<string> bridgeInterfaceNames = new();
+        /// <summary>
         /// 0 = no generate, 1 = generate by inheritance 2 = generate by implementing
         /// </summary>
         public int generateSerializeRootMode;
